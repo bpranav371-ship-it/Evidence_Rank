@@ -5,3 +5,20 @@ progress_every: 10000
 memory_safe_mode: true
 max_text_length_per_candidate: 12000
 enable_debug_samples: true
+
+ranking:
+  top_k: 100
+  strict_rerank_pool_size: 300
+  max_evidence_snippets: 5
+  score_weights:
+    jd_relevance: 0.25
+    must_have_skill: 0.20
+    proof_alignment: 0.25
+    retrieval_evaluation_depth: 0.10
+    production_readiness: 0.10
+    hireability: 0.10
+  penalties:
+    empty_profile_text: 0.15
+    extremely_high_keyword_density: 0.10
+    missing_skills: 0.05
+    missing_experience: 0.05

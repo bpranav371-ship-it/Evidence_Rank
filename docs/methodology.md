@@ -64,3 +64,84 @@ The score counts occurrences of a fixed, transparent technical vocabulary and di
 - Submission CSV generation or dashboard UI
 
 These boundaries keep the foundation reusable and make later ranking changes independently testable.
+
+# Feature 2 Methodology
+
+## Deterministic JD parsing
+
+The JD parser reads a plain-text job description once. It normalizes whitespace and punctuation, then applies an explicit AI/data/software skill dictionary. It returns required and preferred skills, seniority terms, domain terms, evaluation concepts, production concepts, retrieval/ranking concepts, experience ranges, and locations.
+
+No model or external service is involved. Preferred skills are identified from local sections containing phrases such as “nice to have,” “preferred,” or “bonus.” Short or empty JDs return a valid profile with empty collections.
+
+## Candidate Proof Graph
+
+The proof graph distinguishes a claim from its evidence:
+
+- **Supported:** the skill or an alias appears in the current title or career/project evidence.
+- **Weakly supported:** it appears only in education or broad profile text.
+- **Unsupported:** no matching evidence is found.
+
+Evidence snippets are extracted directly from candidate fields and capped in length. The graph never invents accomplishments. It also calculates bounded scores for retrieval/ranking evidence, evaluation evidence, production evidence, AI/ML depth, and overall claim-to-evidence alignment.
+
+## Evidence-supported skill matching
+
+Canonical aliases connect related expressions. For example:
+
+- RAG connects to retrieval-augmented generation, semantic search, embeddings, and retrievers.
+- Ranking connects to learning-to-rank, recommender systems, NDCG, MRR, and MAP.
+- Production readiness connects to deployment, APIs, monitoring, cloud, Docker, Kubernetes, scale, latency, and users.
+- Evaluation connects to offline evaluation, A/B testing, precision, recall, experiments, and ranking metrics.
+
+The matching remains lexical and deterministic. Synonyms are visible in source code and can be audited or extended.
+
+## Baseline scoring
+
+The score is a weighted sum:
+
+| Component | Weight |
+|---|---:|
+| JD lexical and canonical-term relevance | 0.25 |
+| Required-skill coverage | 0.20 |
+| Candidate Proof Graph alignment | 0.25 |
+| Retrieval/ranking/evaluation depth | 0.10 |
+| Production readiness | 0.10 |
+| Hireability and availability | 0.10 |
+
+Configured Feature 1 anomaly penalties are subtracted, then the result is clamped to 0–1. Missing behavioral data uses a neutral 0.5 value so absence is not mistaken for bad behavior.
+
+## Strict top-candidate reranking
+
+The ranker streams every fingerprint and stores only the best bounded pool in a min-heap. By default, the pool contains 300 candidates. It then reranks only that pool with:
+
+- stronger proof-alignment rewards;
+- retrieval, ranking, and evaluation rewards;
+- production-evidence rewards;
+- penalties for unsupported required skills;
+- a keyword-density penalty.
+
+This second stage focuses computation on the candidates who can affect top-10 and top-100 quality.
+
+## Output generation and validation
+
+The pipeline produces:
+
+- a compact ranked submission CSV;
+- a detailed score-breakdown CSV;
+- a JSONL proof audit for ranked candidates.
+
+The validator checks required columns, continuous ranks, score range, unique IDs, non-empty reasoning, readability, and expected row count. The ranking command reports validation status before returning.
+
+## CPU and memory safety
+
+The JD is held once in memory. Candidate fingerprints are read one JSONL line at a time, scored, and discarded unless they enter the bounded shortlist. Only the shortlist and its proof graphs survive until output generation. Consequently, ranking memory grows with the configured shortlist size rather than with the 100,000-candidate dataset.
+
+Feature 2 uses standard-library text operations and no embeddings, GPU, internet, or external APIs.
+
+## Intentionally deferred to Feature 3
+
+- Impossible career timelines
+- Zero-duration expert skills
+- Experience/profile contradictions
+- Research-only and service-only career penalties
+- Title-chasing patterns
+- Full keyword-stuffer and honeypot filtering

@@ -2,111 +2,142 @@
 
 **Hackathon:** INDIA RUNS Track 1 — Intelligent Candidate Discovery
 
-EvidenceRank is a CPU-only, offline candidate intelligence system. Feature 1 builds a trustworthy, reusable fingerprint for every candidate while streaming the source dataset in low-memory mode. Later features will use these fingerprints for evidence-based ranking, consistency checks, hireability scoring, and auditable explanations.
+EvidenceRank is a CPU-only, offline candidate ranking system designed for roughly 100,000 professional profiles. It separates skill claims from profile evidence, scores candidates incrementally, and keeps only a bounded shortlist in memory.
 
-## Why this is different from keyword matching
+## Feature status
 
-A raw skills list is only a claim. EvidenceRank keeps claimed skills separate from career evidence, profile context, behavioral signals, availability, and basic data-quality indicators. The current profiler calculates a lightweight `skill_evidence_hint_score` by checking whether claimed or inferred skills appear in career and project evidence. It does not yet make hiring or ranking decisions.
+Completed:
+
+- **Feature 1 — Streaming Candidate Profiler**
+  - Schema discovery for CSV, JSON, JSONL, and Parquet
+  - Low-memory candidate loading
+  - Deterministic candidate fingerprints
+  - Incremental JSONL feature storage
+- **Feature 2 — Baseline JD Ranker + Candidate Proof Graph**
+  - Rule-based JD parsing
+  - Evidence-supported skill matching
+  - Explainable weighted scoring
+  - Strict reranking of the top candidate pool
+  - Ranked CSV, score breakdown, proof output, and validation
+
+Not implemented:
+
+- Full honeypot firewall
+- Dashboard or frontend
+- External APIs or LLM-generated explanations
+
+## Why EvidenceRank is not keyword matching
+
+Keyword matching rewards profiles that repeat the right vocabulary. EvidenceRank keeps three ideas separate:
+
+1. What the candidate claims
+2. What their title and career history support
+3. Whether their behavior and availability make them realistically hireable
+
+The Candidate Proof Graph classifies skills as supported, weakly supported, or unsupported and stores only snippets found in the profile. Unsupported claims do not receive the same credit as career-backed skills.
 
 ## System constraints
 
-- CPU-only and offline; no APIs or network calls
-- Streams JSONL and CSV one record at a time
-- Streams Parquet in configurable batches
-- Uses `ijson` for memory-safe large JSON arrays when installed
+- CPU-only and offline
+- No API or network calls during profiling or ranking
+- JSONL and CSV streamed one record at a time
+- Parquet read in configurable batches
 - Default batch size: 1,000
-- Writes fingerprints immediately to JSONL
-- Keeps counters rather than the full candidate collection in memory
-- Logs progress every 10,000 candidates
-- Supports `--limit` for safe test runs
-- Caps compact candidate text at 12,000 characters by default
+- Fingerprints written immediately to JSONL
+- Ranking keeps only the top shortlist in a heap
+- Full candidate DataFrames are never created
+- Compact profile text capped at 12,000 characters by default
 
 ## Setup
 
-```bash
-cd EvidenceRank
-python -m venv .venv
-```
-
-Windows PowerShell:
-
 ```powershell
+cd Evidence_Rank
+python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
 ```
 
-Place the dataset at `data/input/candidates.jsonl`, or pass any supported path with `--input`.
+Place candidate data and the job description in `data/input/`. Raw input and generated output files are ignored by Git.
 
-## Run commands
+## Commands
 
-```bash
-python run.py --input data/input/candidates.jsonl
-python run.py --input data/input/candidates.jsonl --limit 5000
-python run.py --input data/input/candidates.jsonl --batch-size 500
-python run.py --input data/input/candidates.csv --limit 1000
+Profile only:
+
+```powershell
+python run.py --input data/input/candidates.jsonl --profile-only
+python run.py --input data/input/candidates.jsonl --profile-only --limit 5000 --batch-size 500
+```
+
+Rank existing fingerprints:
+
+```powershell
+python run.py --jd data/input/job_description.txt --rank --top-k 100
+```
+
+Profile and rank:
+
+```powershell
+python run.py --input data/input/candidates.jsonl --jd data/input/job_description.txt --profile-and-rank --top-k 100 --limit 5000 --batch-size 500
 ```
 
 Run tests:
 
-```bash
+```powershell
 python -m pytest
 ```
 
-The tests are also compatible with the standard library test runner:
+The standard-library test runner also works:
 
-```bash
+```powershell
 python -m unittest discover -s tests
 ```
 
-## Output files
+## Outputs
 
-- `data/output/candidate_fingerprints.jsonl`: one deterministic candidate fingerprint per line
-- `data/output/schema_report.json`: detected format, record count, columns, nested field paths, likely field mappings, and warnings
-- `data/output/profiler_summary.json`: aggregate quality metrics, errors, common missing fields/anomalies, runtime, and observed memory
+Feature 1:
 
-Each run replaces these three output files so results cannot accidentally mix across datasets.
+- `data/output/candidate_fingerprints.jsonl` — one normalized fingerprint per candidate
+- `data/output/schema_report.json` — source format, record count, fields, and likely mappings
+- `data/output/profiler_summary.json` — profiling errors, averages, runtime, and memory observations
 
-## Configuration
+Feature 2:
 
-Edit `config.yaml` to change the default input, output directory, batch size, progress frequency, memory-safe mode marker, or text cap. CLI `--input`, `--batch-size`, and `--output-dir` override configuration values.
+- `data/output/ranked_candidates.csv` — `candidate_id`, `rank`, `score`, and evidence-based reasoning
+- `data/output/score_breakdown.csv` — component scores, penalties, and strict-rerank status
+- `data/output/top_candidate_proofs.jsonl` — proof graphs and evidence snippets for ranked candidates
 
-For JSONL and CSV, batch size does not cause records to accumulate in memory; records are still yielded one at a time. It controls Parquet batch reads and is reserved for later bounded-batch transforms.
+Each run replaces the corresponding outputs to avoid mixing datasets or scoring versions.
 
-## Current feature status
+## Scoring formula
 
-Implemented:
+The baseline score is clamped to 0–1:
 
-- Format and schema discovery used by the profiler before alias fallbacks
-- Streaming CSV, JSONL, JSON, and Parquet loaders
-- Deterministic text normalization
-- Candidate fingerprint generation
-- Basic safe anomaly flags
-- Incremental JSONL feature storage
-- Counter-based run summaries
-- CLI limits and configurable batches
-- Unit and end-to-end tests
+```text
+0.25 × JD relevance
++ 0.20 × must-have skill coverage
++ 0.25 × proof alignment
++ 0.10 × retrieval/ranking/evaluation depth
++ 0.10 × production readiness
++ 0.10 × hireability
+- configured basic anomaly penalties
+```
 
-Not implemented yet:
+Missing behavioral or availability signals receive a neutral score rather than zero. After baseline scoring, the top 300 candidates are reranked with stronger rewards for proof alignment, retrieval/ranking evaluation, and production evidence, plus stronger penalties for unsupported required skills and high keyword density.
 
-- Candidate ranking
-- Full honeypot detection
-- Candidate Proof Graph
-- Dashboard
-- LLM-generated explanations
+Weights, penalties, shortlist size, and output count are configurable in `config.yaml`.
 
-## Low-memory design
+## Current limitations
 
-At steady state the pipeline holds one source record, one fingerprint, a small schema sample, and aggregate counters. It never constructs a DataFrame containing all candidates and never accumulates fingerprints in a list. JSONL/CSV memory usage is therefore approximately constant as the dataset grows. Large JSON arrays require `ijson`; without it, the loader emits a warning before using the standard-library fallback.
+- Skill aliases are deterministic and intentionally finite.
+- The proof graph does not yet validate career timelines or impossible skill durations.
+- Term overlap is lexical; no embedding model is used.
+- Company quality, service-only careers, title chasing, and research-only profiles are not yet modeled.
+- Reasoning is templated from real scores and evidence, not generated by an LLM.
 
-## Next planned features
+## Next feature
 
-1. Baseline JD-to-candidate ranker
-2. Candidate Proof Graph
-3. Honeypot Firewall
-4. Two-Stage Evidence Ranker
-5. Hireability Intelligence
-6. Evidence-Cited Explanations
-7. CSV submission validator
-8. Optional Recruiter Audit Studio
+**Feature 3 — Honeypot Firewall**
 
-See [docs/methodology.md](docs/methodology.md) for scoring definitions and Feature 1 boundaries.
+It should add timeline consistency checks, impossible-duration detection, zero-duration expert-skill checks, title/career contradiction detection, keyword-stuffer analysis, and audit reports without changing the offline and memory-safe architecture.
+
+See [docs/methodology.md](docs/methodology.md) for implementation details.
