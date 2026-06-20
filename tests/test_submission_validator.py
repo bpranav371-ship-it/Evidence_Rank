@@ -55,7 +55,21 @@ class SubmissionValidatorTests(unittest.TestCase):
                 [{"candidate_id": "A", "rank": 1, "score": 1.5, "reasoning": "Invalid"}],
             )
             result = validate_ranked_candidates(path)
+            self.assertFalse(result["valid"])
+
+    def test_rejects_scores_that_are_not_descending(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "ranked.csv"
+            self._write(
+                path,
+                [
+                    {"candidate_id": "A", "rank": 1, "score": 0.5, "reasoning": "Reason"},
+                    {"candidate_id": "B", "rank": 2, "score": 0.8, "reasoning": "Reason"},
+                ],
+            )
+            result = validate_ranked_candidates(path, expected_rows=2)
         self.assertFalse(result["valid"])
+        self.assertTrue(any("descending" in error.lower() for error in result["errors"]))
 
     def test_risk_validation_rejects_severe_top_10_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

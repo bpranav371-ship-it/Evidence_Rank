@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from src.ablation_evaluator import run_ablation
+from src.benchmark_cases import run_offline_benchmarks
 from src.audit_report import (
     HoneypotAuditWriter,
     audit_existing_fingerprints,
@@ -19,10 +20,14 @@ from src.feature_store import IncrementalFeatureStore
 from src.honeypot_firewall import HoneypotFirewall
 from src.jd_parser import parse_jd_file
 from src.ranking_output import write_ranking_outputs
+from src.reproducibility import build_reproducibility_manifest
+from src.runtime_profiler import profile_ranking_runtime
 from src.schema_inspector import inspect_schema
+from src.submission_packager import build_submission_package
 from src.submission_validator import validate_ranked_candidates
 from src.submission_safety import validate_final_submission
 from src.utils import Timer, log
+from src.weight_sensitivity import run_weight_sensitivity
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -83,6 +88,17 @@ def load_config(path: Path) -> dict[str, Any]:
 def resolve_project_path(value: str | Path) -> Path:
     path = Path(value)
     return path if path.is_absolute() else PROJECT_ROOT / path
+
+
+def expected_ranked_rows(output_dir: Path, top_k: int) -> int:
+    summary_path = output_dir / "profiler_summary.json"
+    if not summary_path.exists():
+        return top_k
+    try:
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        return min(top_k, max(0, int(summary.get("total_candidates_processed", top_k))))
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return top_k
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -146,6 +162,36 @@ def build_parser() -> argparse.ArgumentParser:
         "--validate-final-submission",
         action="store_true",
         help="Run final output and ranking safety checks.",
+    )
+    modes.add_argument(
+        "--run-benchmark",
+        action="store_true",
+        help="Run deterministic synthetic ranking sanity benchmarks.",
+    )
+    modes.add_argument(
+        "--run-weight-sensitivity",
+        action="store_true",
+        help="Compare controlled in-memory scoring weight variants.",
+    )
+    modes.add_argument(
+        "--profile-runtime",
+        action="store_true",
+        help="Profile ranking runtime and memory from existing fingerprints.",
+    )
+    modes.add_argument(
+        "--build-reproducibility-manifest",
+        action="store_true",
+        help="Write deterministic environment, config, and Git metadata.",
+    )
+    modes.add_argument(
+        "--build-submission-package",
+        action="store_true",
+        help="Build the clean final submission ZIP and manifests.",
+    )
+    modes.add_argument(
+        "--final-submit-check",
+        action="store_true",
+        help="Run validation, safety, reproducibility, runtime, and packaging checks.",
     )
     return parser
 
@@ -404,6 +450,12 @@ def main(argv: list[str] | None = None) -> int:
             and not args.audit_honeypots
             and not args.run_ablation
             and not args.validate_final_submission
+            and not args.run_benchmark
+            and not args.run_weight_sensitivity
+            and not args.profile_runtime
+            and not args.build_reproducibility_manifest
+            and not args.build_submission_package
+            and not args.final_submit_check
         )
     )
     rank_requested = args.rank or args.profile_and_rank
@@ -540,6 +592,173 @@ def main(argv: list[str] | None = None) -> int:
             f"{(output_dir / 'final_submission_safety_report.json').resolve()}"
         )
         return 0 if report["passed"] else 1
+
+    if args.run_benchmark:
+        if not args.jd_path:
+            print("Benchmarking requires --jd PATH_TO_JOB_DESCRIPTION.txt", file=sys.stderr)
+            return 2
+        report = run_offline_benchmarks(
+            resolve_project_path(args.jd_path),
+            output_dir,
+            min_pass_rate=float(config.get("benchmark", {}).get("min_pass_rate", 0.75)),
+        )
+        print("\nEvidenceRank offline benchmark complete")
+        print("-" * 40)
+        print(f"Passed: {report['passed']}")
+        print(f"Pass rate: {report['pass_rate']:.1%}")
+        for name, path in report["output_paths"].items():
+            print(f"{name}: {Path(path).resolve()}")
+        return 0 if report["passed"] else 1
+
+    if args.run_weight_sensitivity:
+        if not args.jd_path:
+            print("Weight sensitivity requires --jd PATH_TO_JOB_DESCRIPTION.txt", file=sys.stderr)
+            return 2
+        fingerprints_path = output_dir / "candidate_fingerprints.jsonl"
+        if not fingerprints_path.exists():
+            print("Candidate fingerprints are missing. Run --profile-only first.", file=sys.stderr)
+            return 2
+        report, paths = run_weight_sensitivity(
+            fingerprints_path,
+            parse_jd_file(resolve_project_path(args.jd_path)),
+            output_dir,
+            top_k,
+            ranking_config,
+            firewall_config,
+            calibration_config,
+        )
+        print("\nEvidenceRank weight sensitivity complete")
+        print("-" * 43)
+        print("Variants: " + ", ".join(report["variants"]))
+        for warning in report["warnings"]:
+            print(f"WARNING: {warning}")
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        print(f"Runtime: {timer.elapsed_seconds:.2f} seconds")
+        return 0
+
+    if args.profile_runtime:
+        if not args.jd_path:
+            print("Runtime profiling requires --jd PATH_TO_JOB_DESCRIPTION.txt", file=sys.stderr)
+            return 2
+        fingerprints_path = output_dir / "candidate_fingerprints.jsonl"
+        if not fingerprints_path.exists():
+            print("Candidate fingerprints are missing. Run --profile-only first.", file=sys.stderr)
+            return 2
+        report = profile_ranking_runtime(
+            fingerprints_path,
+            parse_jd_file(resolve_project_path(args.jd_path)),
+            output_dir,
+            top_k,
+            ranking_config,
+            firewall_config,
+            calibration_config,
+            config.get("runtime_profile", {}),
+        )
+        print("\nEvidenceRank runtime profile complete")
+        print("-" * 39)
+        print(f"Candidates measured: {report['candidate_count']:,}")
+        print(f"Ranking runtime: {report['ranking_runtime_seconds']:.2f} seconds")
+        print(f"Peak RSS: {report['peak_rss_memory_mb']} MB")
+        print(
+            "Projected 100,000-candidate runtime: "
+            f"{report['estimated_100000_candidate_ranking_seconds']} seconds"
+        )
+        print(f"Report: {Path(report['output_path']).resolve()}")
+        return 0
+
+    if args.build_reproducibility_manifest:
+        manifest = build_reproducibility_manifest(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        print("\nEvidenceRank reproducibility manifest created")
+        print("-" * 46)
+        print(f"Git commit: {manifest['current_git_commit_hash'] or '(unavailable)'}")
+        print(f"Manifest: {Path(manifest['output_path']).resolve()}")
+        return 0
+
+    if args.build_submission_package:
+        build_reproducibility_manifest(PROJECT_ROOT, output_dir, config, top_k=top_k)
+        safety = validate_final_submission(
+            output_dir,
+            top_k=top_k,
+            config=config.get("submission_safety", {}),
+        )
+        manifest, paths = build_submission_package(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        print("\nEvidenceRank submission package created")
+        print("-" * 42)
+        print(f"Safety passed: {safety['passed']}")
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        return 0 if not manifest["missing_required_files"] and safety["passed"] else 1
+
+    if args.final_submit_check:
+        ranked_path = output_dir / "ranked_candidates.csv"
+        breakdown_path = output_dir / "score_breakdown.csv"
+        validation = validate_ranked_candidates(
+            ranked_path,
+            expected_rows=expected_ranked_rows(output_dir, top_k),
+            score_breakdown_path=breakdown_path,
+            firewall_enabled=True,
+            calibration_enabled=True,
+        )
+        safety = validate_final_submission(
+            output_dir,
+            top_k=top_k,
+            config=config.get("submission_safety", {}),
+        )
+        build_reproducibility_manifest(PROJECT_ROOT, output_dir, config, top_k=top_k)
+        runtime_warning = None
+        default_jd = resolve_project_path(
+            args.jd_path or "data/input/job_description.txt"
+        )
+        fingerprints_path = output_dir / "candidate_fingerprints.jsonl"
+        if default_jd.exists() and fingerprints_path.exists():
+            profile_ranking_runtime(
+                fingerprints_path,
+                parse_jd_file(default_jd),
+                output_dir,
+                top_k,
+                ranking_config,
+                firewall_config,
+                calibration_config,
+                config.get("runtime_profile", {}),
+            )
+        else:
+            runtime_warning = "Runtime profile skipped because JD or fingerprints are missing."
+        manifest, paths = build_submission_package(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        passed = (
+            validation["valid"]
+            and safety["passed"]
+            and not manifest["missing_required_files"]
+        )
+        print(
+            "\nFINAL SUBMISSION CHECK: "
+            + ("PASSED" if passed else "FAILED")
+        )
+        for error in validation["errors"]:
+            print(f"BLOCKING: {error}")
+        for error in safety["blocking_errors"]:
+            print(f"BLOCKING: {error}")
+        for warning in safety["warnings"]:
+            print(f"WARNING: {warning}")
+        if runtime_warning:
+            print(f"WARNING: {runtime_warning}")
+        print(f"Package: {paths['submission_package'].resolve()}")
+        return 0 if passed else 1
 
     return 0
 

@@ -84,3 +84,35 @@ submission_safety:
   max_top10_severe_risk: 0
   warn_if_all_scores_within: 0.02
   require_score_descending: true
+
+reproducibility:
+  random_seed: 42
+  repository_url: "https://github.com/bpranav371-ship-it/Evidence_Rank.git"
+  recommended_final_command: "python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration"
+
+benchmark:
+  enabled: false
+  min_pass_rate: 0.75
+
+weight_sensitivity:
+  enabled: false
+  variants:
+    - default
+    - proof_heavy
+    - production_heavy
+    - retrieval_eval_heavy
+    - hireability_light
+    - firewall_strict
+    - calibration_light
+    - keyword_baseline_reference
+
+runtime_profile:
+  enabled: false
+  warn_if_projected_ranking_seconds_above: 300
+
+submission_package:
+  include_optional_reports: true
+  package_name: "submission_package.zip"
+  require_ranked_candidates: true
+  require_score_breakdown: true
+  require_safety_report: true

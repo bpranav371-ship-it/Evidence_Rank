@@ -27,10 +27,25 @@ def validate_final_submission(
     breakdown_path = output / "score_breakdown.csv"
     proof_path = output / "top_candidate_proofs.jsonl"
     report_path = output / "final_submission_safety_report.json"
+    reproduction_path = output / "final_reproduction_command.txt"
     blocking: list[str] = []
     warnings: list[str] = []
     actions: list[str] = []
-    base = validate_ranked_candidates(ranked_path, expected_rows=top_k)
+    expected_rows = top_k
+    summary_path = output / "profiler_summary.json"
+    if summary_path.exists():
+        try:
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            processed = int(summary.get("total_candidates_processed", top_k))
+            if processed >= 0:
+                expected_rows = min(top_k, processed)
+        except (OSError, ValueError, TypeError, json.JSONDecodeError):
+            warnings.append("profiler_summary.json could not be used for row-count validation.")
+    base = validate_ranked_candidates(
+        ranked_path,
+        expected_rows=expected_rows,
+        score_breakdown_path=breakdown_path,
+    )
     blocking.extend(base["errors"])
     rows: list[dict[str, str]] = []
     breakdown: list[dict[str, str]] = []
@@ -42,6 +57,16 @@ def validate_final_submission(
             breakdown = list(csv.DictReader(handle))
     else:
         blocking.append("score_breakdown.csv is missing.")
+    if rows and tuple(rows[0].keys()) != ("candidate_id", "rank", "score", "reasoning"):
+        blocking.append(
+            "ranked_candidates.csv must contain exactly: candidate_id, rank, score, reasoning."
+        )
+    if breakdown:
+        final_score_columns = {
+            "final_score", "risk_adjusted_score", "calibrated_final_score"
+        }
+        if not final_score_columns.intersection(breakdown[0]):
+            warnings.append("score_breakdown.csv has no recognized final score column.")
     scores = [_number(row["score"]) for row in rows if row.get("score")]
     if scores and scores != sorted(scores, reverse=True):
         blocking.append("Scores are not monotonically descending.")
@@ -55,6 +80,8 @@ def validate_final_submission(
     lengths = [len((row.get("reasoning") or "").strip()) for row in rows]
     if any(length < min_reasoning for length in lengths):
         blocking.append(f"At least one reasoning entry is shorter than {min_reasoning} characters.")
+    if any(length < min_reasoning for length in lengths[:10]):
+        blocking.append("Top-10 reasoning is not detailed enough.")
     severe_top10 = [
         row for row in breakdown[:10] if (row.get("risk_level") or "").lower() == "severe"
     ]
@@ -91,6 +118,10 @@ def validate_final_submission(
         for filename in calibration_files:
             if not (output / filename).exists():
                 warnings.append(f"{filename} is missing despite calibrated output.")
+    if not reproduction_path.exists():
+        warnings.append(
+            "final_reproduction_command.txt is not present yet; packaging will create it."
+        )
     if warnings:
         actions.append("Review warnings before final upload.")
     if blocking:
@@ -104,7 +135,9 @@ def validate_final_submission(
             "ranked_candidates_exists": ranked_path.exists(),
             "score_breakdown_exists": breakdown_path.exists(),
             "top_candidate_proofs_exists": proof_path.exists(),
+            "final_reproduction_command_exists": reproduction_path.exists(),
             "row_count": len(rows),
+            "expected_row_count": expected_rows,
         },
         "ranking_quality_checks": {
             "scores_descending": scores == sorted(scores, reverse=True) if scores else False,

@@ -309,3 +309,78 @@ restricted to the configured shortlist.
 **Hireability and risk signals are used only as ranking confidence signals.
 They should not be treated as final hiring decisions. Human review is
 required.**
+
+# Feature 5 Methodology
+
+## Offline benchmark cases
+
+Feature 5 evaluates eight fixed synthetic profiles: a production retrieval
+engineer, keyword stuffer, research-only candidate, service-only candidate,
+general ML engineer, low-keyword hidden gem, severe honeypot, and candidate
+with missing behavior signals. The cases run through the same proof, firewall,
+and calibration code as normal ranking, but never require the private dataset.
+
+The checks focus on relative behavior: evidence should beat claims, severe
+risk should not win, production depth should matter for a production JD, and
+missing behavior data should remain neutral rather than destructive.
+
+## Proxy evaluation without labels
+
+The benchmark, ablation, and sensitivity reports measure deterministic
+behavior rather than relevance accuracy. They use proof alignment, risk,
+unsupported requirements, production/retrieval evidence, top-10 readiness,
+rank overlap, and score spread.
+
+**The benchmark and ablation results are sanity checks, not official
+leaderboard metrics, because the challenge does not provide public
+ground-truth labels.**
+
+## Weight sensitivity
+
+Eight variants alter weights only in memory: default, proof-heavy,
+production-heavy, retrieval/evaluation-heavy, light hireability,
+strict firewall, light calibration, and a keyword-only reference. The source
+configuration is deep-copied and never rewritten. Each variant records overlap
+with the default result and ranking-quality proxy metrics. A failed variant is
+reported as a warning rather than aborting the entire analysis.
+
+## Runtime and memory profiling
+
+Runtime profiling reads the existing fingerprint JSONL, counts records by
+streaming, and executes the final risk-aware calibrated ranker. It records
+platform, Python version, CPU count, available RAM when `psutil` exists,
+fingerprint size, measured runtime, observed RSS, output sizes, and a linear
+100,000-candidate projection. Missing `psutil` produces null memory fields
+instead of failing.
+
+Normal ranking does not run profiling, benchmarks, or sensitivity analysis.
+Those commands remain opt-in, so Feature 5 adds no default ranking overhead.
+
+## Reproducibility
+
+The reproducibility manifest stores the Git commit and branch when available,
+dirty status, Python/platform data, SHA-256 hashes of `requirements.txt` and
+`config.yaml`, configured random seed, expected filenames, enabled ranking
+mode, and the exact recommended command. It records no candidate content and
+does not hash or package private input data.
+
+## Submission packaging
+
+The packager includes the ranked CSV, score breakdown, safety and
+reproducibility reports, judge-facing approach summary, exact reproduction
+commands, and any available optional evaluation reports. It uses an explicit
+allowlist, so raw inputs, candidate fingerprints, `.git`, caches, virtual
+environments, and secrets cannot enter the ZIP accidentally.
+
+The final submit command runs structured CSV validation, submission safety,
+manifest creation, runtime profiling when the expected local inputs exist,
+and package generation. Blocking validation errors produce a failed final
+status; optional missing reports remain warnings.
+
+## Limitations
+
+Runtime extrapolation is linear and depends on the measured machine and input
+mix. Synthetic benchmarks cannot replace relevance judgments from recruiters
+or leaderboard labels. Weight stability indicates robustness, not optimality.
+All risk and hireability signals remain decision-support evidence for human
+review, never automated hiring decisions.

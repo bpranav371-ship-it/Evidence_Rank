@@ -44,6 +44,7 @@ def validate_ranked_candidates(
 
     seen_ids: set[str] = set()
     ranks: list[int] = []
+    scores: list[float] = []
     for row_number, row in enumerate(rows, start=2):
         candidate_id = str(row.get("candidate_id") or "").strip()
         if not candidate_id:
@@ -62,6 +63,8 @@ def validate_ranked_candidates(
             score = float(str(row.get("score") or ""))
             if not math.isfinite(score) or not 0.0 <= score <= 1.0:
                 errors.append(f"Row {row_number}: score must be between 0 and 1.")
+            else:
+                scores.append(score)
         except ValueError:
             errors.append(f"Row {row_number}: score is not numeric.")
 
@@ -72,6 +75,8 @@ def validate_ranked_candidates(
         expected_ranks = list(range(1, len(rows) + 1))
         if ranks != expected_ranks:
             errors.append("Ranks must start at 1 and be continuous in row order.")
+    if len(scores) == len(rows) and scores != sorted(scores, reverse=True):
+        errors.append("Scores must be monotonically descending in row order.")
 
     if firewall_enabled and score_breakdown_path is not None:
         breakdown = Path(score_breakdown_path)

@@ -32,6 +32,12 @@ Completed:
   - Bounded evidence calibration for the top candidate pool
   - Four-variant proxy ablation reports
   - Final submission safety validation
+- **Feature 5 - Submission-Grade Evaluation, Reproducibility, and Packaging Suite**
+  - Eight deterministic offline benchmark cases
+  - Controlled weight-sensitivity analysis
+  - Runtime, memory, and 100,000-candidate projections
+  - Git/config/environment reproducibility metadata
+  - Clean submission ZIP generation and one-command final checks
 
 Not implemented:
 
@@ -122,6 +128,36 @@ Validate final submission artifacts:
 python run.py --validate-final-submission --top-k 100
 ```
 
+Run Feature 5 evaluation and packaging tools:
+
+```powershell
+python run.py --jd data/input/job_description.txt --run-benchmark
+python run.py --jd data/input/job_description.txt --run-weight-sensitivity --top-k 100
+python run.py --jd data/input/job_description.txt --profile-runtime --top-k 100
+python run.py --build-reproducibility-manifest
+python run.py --build-submission-package --top-k 100
+python run.py --final-submit-check --top-k 100
+```
+
+Recommended final workflow:
+
+```powershell
+# 1. Build fingerprints once
+python run.py --input data/input/candidates.jsonl --profile-only --batch-size 500
+
+# 2. Generate the final ranked CSV
+python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration
+
+# 3-6. Validate and collect optional evidence
+python run.py --validate-final-submission --top-k 100
+python run.py --jd data/input/job_description.txt --run-ablation --top-k 100
+python run.py --jd data/input/job_description.txt --run-benchmark
+python run.py --jd data/input/job_description.txt --run-weight-sensitivity --top-k 100
+
+# 7. Build the final internal package
+python run.py --final-submit-check --top-k 100
+```
+
 Optional risk controls:
 
 ```powershell
@@ -164,6 +200,17 @@ Feature 4:
 - `data/output/ablation_summary.csv` - compact ablation comparison
 - `data/output/sanity_checks_report.json` - deterministic behavioral sanity checks
 - `data/output/final_submission_safety_report.json` - blocking errors and upload warnings
+
+Feature 5:
+
+- `data/output/benchmark_report.json` and `benchmark_summary.csv` - synthetic sanity cases
+- `data/output/weight_sensitivity_report.json` and `weight_sensitivity_summary.csv` - controlled variant stability
+- `data/output/runtime_profile_report.json` - measured runtime, RSS, and scale projection
+- `data/output/reproducibility_manifest.json` - Git, Python, config, and dependency hashes
+- `data/output/final_submission_manifest.json` - package contents and readiness state
+- `data/output/approach_summary.md` - concise judge-facing architecture summary
+- `data/output/final_reproduction_command.txt` - exact regeneration commands
+- `data/output/submission_package.zip` - clean internal submission bundle without raw data
 
 ## Scoring
 
@@ -230,6 +277,8 @@ Missing behavior or availability data is neutral to mildly risky, not automatica
   do not preserve every original structured role field.
 - Ablation metrics are proxy sanity metrics because the challenge does not provide
   public ground-truth relevance labels.
+- Offline benchmark and weight-sensitivity results are also sanity checks, not
+  official leaderboard or ground-truth metrics.
 
 ## Safety note
 
@@ -240,12 +289,21 @@ Missing behavior or availability data is neutral to mildly risky, not automatica
 Hireability and risk signals are ranking-confidence signals, not final hiring
 decisions. Human review is required.
 
+## What to upload
+
+- The GitHub repository
+- The approach deck PDF
+- `ranked_candidates.csv`
+- Optionally keep `submission_package.zip` as an internal backup bundle
+
+The ZIP intentionally excludes raw candidates, input files, fingerprints,
+secrets, Git metadata, caches, and virtual environments.
+
 ## Next feature
 
-**Feature 5 - Submission-Grade Evaluation and Reproducibility**
+**Feature 6 - Judge Demo and Explainability Polish**
 
-The next feature should add curated offline benchmark cases, weight-sensitivity
-analysis, reproducible Docker execution, runtime/memory regression tests, and
-competition-ready metadata and submission packaging.
+The next feature should focus on a concise offline demo script, judge-facing
+examples, and final methodology/deck assets without changing core ranking logic.
 
 See [docs/methodology.md](docs/methodology.md) for implementation details.
