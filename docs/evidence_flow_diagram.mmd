@@ -1,0 +1,10 @@
+flowchart TD
+    A["Claimed Skill"] --> B["Career Evidence Search"]
+    B --> C{"Evidence strength"}
+    C -->|Direct career proof| D["Supported"]
+    C -->|Broad profile mention| E["Weakly Supported"]
+    C -->|No matching proof| F["Unsupported"]
+    D --> G["Proof Alignment"]
+    E --> G
+    F --> G
+    G --> H["Score + Explanation"]

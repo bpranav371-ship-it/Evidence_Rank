@@ -1,0 +1,10 @@
+flowchart LR
+    A["JD Relevance"] --> S["Base Score"]
+    B["Must-Have Skills"] --> S
+    C["Proof Alignment"] --> S
+    D["Retrieval / Evaluation Depth"] --> S
+    E["Production Readiness"] --> S
+    F["Hireability"] --> S
+    S --> R["Subtract Honeypot Penalty"]
+    R --> K["Apply Evidence Calibration"]
+    K --> Z["Final Score"]

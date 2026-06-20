@@ -38,6 +38,12 @@ Completed:
   - Runtime, memory, and 100,000-candidate projections
   - Git/config/environment reproducibility metadata
   - Clean submission ZIP generation and one-command final checks
+- **Feature 6 - Judge Demo Polish + Approach Deck Material Generator**
+  - Evidence-grounded top-10 explanation cards
+  - Twelve-slide approach deck content and a timed demo script
+  - Judge walkthrough, FAQ, and final submission checklist
+  - Mermaid architecture, scoring, and evidence-flow diagrams
+  - Safe judge demo packet ZIP and automated demo readiness check
 
 Not implemented:
 
@@ -139,6 +145,16 @@ python run.py --build-submission-package --top-k 100
 python run.py --final-submit-check --top-k 100
 ```
 
+Build Feature 6 judge materials:
+
+```powershell
+python run.py --build-deck-materials
+python run.py --explain-top-candidates --top-n 10
+python run.py --build-demo-pack --top-k 100
+python run.py --judge-demo-check
+python run.py --build-all-submission-artifacts --top-k 100
+```
+
 Recommended final workflow:
 
 ```powershell
@@ -211,6 +227,20 @@ Feature 5:
 - `data/output/approach_summary.md` - concise judge-facing architecture summary
 - `data/output/final_reproduction_command.txt` - exact regeneration commands
 - `data/output/submission_package.zip` - clean internal submission bundle without raw data
+
+Feature 6:
+
+- `docs/approach_deck.md` - twelve-slide judge-facing deck content
+- `docs/demo_script.md` - concise 2–3 minute presentation script
+- `docs/judge_walkthrough.md` - recommended artifact review order
+- `docs/submission_checklist.md` - final hackathon checklist
+- `docs/faq_for_judges.md` - concise technical answers to likely questions
+- `docs/*_diagram.mmd` - Mermaid architecture, scoring, and evidence-flow sources
+- `data/output/top10_explanation_cards.md` and `.json` - evidence-grounded cards
+- `data/output/judge_demo_packet.md` - consolidated judge handout
+- `data/output/demo_packet_manifest.json` - packet allowlist and missing files
+- `data/output/demo_packet.zip` - safe demo bundle without raw candidate data
+- `data/output/judge_demo_check_report.json` - demo readiness result
 
 ## Scoring
 
@@ -299,11 +329,34 @@ decisions. Human review is required.
 The ZIP intentionally excludes raw candidates, input files, fingerprints,
 secrets, Git metadata, caches, and virtual environments.
 
-## Next feature
+## Final project workflow
 
-**Feature 6 - Judge Demo and Explainability Polish**
+```powershell
+# 1. Profile
+python run.py --input data/input/candidates.jsonl --profile-only --batch-size 500
 
-The next feature should focus on a concise offline demo script, judge-facing
-examples, and final methodology/deck assets without changing core ranking logic.
+# 2. Rank
+python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration
+
+# 3. Final safety and submission package
+python run.py --final-submit-check --top-k 100
+
+# 4. Demo and deck materials
+python run.py --build-demo-pack --top-k 100
+
+# 5. Judge readiness check
+python run.py --judge-demo-check
+
+# 6. Rebuild every final artifact in one command
+python run.py --build-all-submission-artifacts --top-k 100
+```
+
+Judges should inspect `ranked_candidates.csv`, `score_breakdown.csv`,
+`top10_explanation_cards.md`, `final_submission_safety_report.json`, and
+`reproducibility_manifest.json` first.
+
+The final deck PDF should be created manually from `docs/approach_deck.md`.
+Copy the twelve slide sections into PowerPoint, Google Slides, Marp, or another
+presentation tool, render the Mermaid diagrams where useful, and export to PDF.
 
 See [docs/methodology.md](docs/methodology.md) for implementation details.

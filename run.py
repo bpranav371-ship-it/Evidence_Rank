@@ -16,6 +16,9 @@ from src.audit_report import (
 from src.baseline_ranker import RankingResult, rank_fingerprints
 from src.candidate_loader import CandidateLoader
 from src.candidate_profiler import CandidateProfiler, CandidateProfilerConfig
+from src.deck_materials import build_deck_materials
+from src.demo_exporter import build_demo_pack, judge_demo_check
+from src.explanation_cards import build_explanation_cards
 from src.feature_store import IncrementalFeatureStore
 from src.honeypot_firewall import HoneypotFirewall
 from src.jd_parser import parse_jd_file
@@ -111,6 +114,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--batch-size", type=int, default=None, help="Bounded Parquet batch size.")
     parser.add_argument("--top-k", type=int, default=None, help="Number of candidates to rank.")
     parser.add_argument(
+        "--top-n",
+        type=int,
+        default=None,
+        help="Number of leading candidates to include in explanation cards.",
+    )
+    parser.add_argument(
         "--enable-honeypot-firewall",
         action="store_true",
         help="Enable deterministic honeypot risk detection and risk-aware reranking.",
@@ -192,6 +201,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--final-submit-check",
         action="store_true",
         help="Run validation, safety, reproducibility, runtime, and packaging checks.",
+    )
+    modes.add_argument(
+        "--build-demo-pack",
+        action="store_true",
+        help="Generate judge-facing docs, explanation cards, and the demo ZIP.",
+    )
+    modes.add_argument(
+        "--build-deck-materials",
+        action="store_true",
+        help="Generate deck Markdown, demo docs, and Mermaid diagrams.",
+    )
+    modes.add_argument(
+        "--explain-top-candidates",
+        action="store_true",
+        help="Generate evidence-grounded explanation cards for top candidates.",
+    )
+    modes.add_argument(
+        "--judge-demo-check",
+        action="store_true",
+        help="Validate judge-facing documentation and demo artifacts.",
+    )
+    modes.add_argument(
+        "--build-all-submission-artifacts",
+        action="store_true",
+        help="Build safety, reproducibility, submission, deck, and demo artifacts.",
     )
     return parser
 
@@ -456,6 +490,11 @@ def main(argv: list[str] | None = None) -> int:
             and not args.build_reproducibility_manifest
             and not args.build_submission_package
             and not args.final_submit_check
+            and not args.build_demo_pack
+            and not args.build_deck_materials
+            and not args.explain_top_candidates
+            and not args.judge_demo_check
+            and not args.build_all_submission_artifacts
         )
     )
     rank_requested = args.rank or args.profile_and_rank
@@ -758,6 +797,134 @@ def main(argv: list[str] | None = None) -> int:
         if runtime_warning:
             print(f"WARNING: {runtime_warning}")
         print(f"Package: {paths['submission_package'].resolve()}")
+        return 0 if passed else 1
+
+    if args.build_deck_materials:
+        paths = build_deck_materials(
+            PROJECT_ROOT / "docs",
+            config.get("demo_materials", {}),
+        )
+        print("\nEvidenceRank deck materials created")
+        print("-" * 37)
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        return 0
+
+    if args.explain_top_candidates:
+        top_n = int(
+            args.top_n
+            or config.get("demo_materials", {}).get("top_n_explanations", 10)
+        )
+        try:
+            cards, paths = build_explanation_cards(output_dir, top_n=top_n)
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print("\nEvidenceRank explanation cards created")
+        print("-" * 41)
+        print(f"Candidates explained: {len(cards)}")
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        return 0
+
+    if args.build_demo_pack:
+        top_n = int(
+            args.top_n
+            or config.get("demo_materials", {}).get("top_n_explanations", 10)
+        )
+        try:
+            manifest, paths = build_demo_pack(
+                PROJECT_ROOT,
+                output_dir,
+                config,
+                top_n=top_n,
+            )
+        except FileNotFoundError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        print("\nEvidenceRank judge demo pack created")
+        print("-" * 39)
+        print(f"Generated files: {len(manifest['generated_files'])}")
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        return 0
+
+    if args.judge_demo_check:
+        report = judge_demo_check(PROJECT_ROOT, output_dir)
+        print(
+            "\nJUDGE DEMO CHECK: "
+            + ("PASSED" if report["passed"] else "FAILED")
+        )
+        for error in report["blocking_errors"]:
+            print(f"BLOCKING: {error}")
+        print(
+            "Report: "
+            f"{(output_dir / 'judge_demo_check_report.json').resolve()}"
+        )
+        return 0 if report["passed"] else 1
+
+    if args.build_all_submission_artifacts:
+        required = (output_dir / "ranked_candidates.csv", output_dir / "score_breakdown.csv")
+        if not all(path.exists() for path in required):
+            print(
+                "Run the final ranking command first:\n"
+                "python run.py --jd data/input/job_description.txt --rank --top-k 100 "
+                "--enable-honeypot-firewall --enable-evidence-calibration",
+                file=sys.stderr,
+            )
+            return 2
+        safety = validate_final_submission(
+            output_dir,
+            top_k=top_k,
+            config=config.get("submission_safety", {}),
+        )
+        build_reproducibility_manifest(PROJECT_ROOT, output_dir, config, top_k=top_k)
+        default_jd = resolve_project_path(args.jd_path or "data/input/job_description.txt")
+        fingerprints_path = output_dir / "candidate_fingerprints.jsonl"
+        runtime_built = False
+        if default_jd.exists() and fingerprints_path.exists():
+            profile_ranking_runtime(
+                fingerprints_path,
+                parse_jd_file(default_jd),
+                output_dir,
+                top_k,
+                ranking_config,
+                firewall_config,
+                calibration_config,
+                config.get("runtime_profile", {}),
+            )
+            runtime_built = True
+        submission_manifest, submission_paths = build_submission_package(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        demo_manifest, demo_paths = build_demo_pack(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            top_n=int(
+                args.top_n
+                or config.get("demo_materials", {}).get("top_n_explanations", 10)
+            ),
+        )
+        demo_check = judge_demo_check(PROJECT_ROOT, output_dir)
+        passed = (
+            safety["passed"]
+            and not submission_manifest["missing_required_files"]
+            and demo_check["passed"]
+        )
+        print(
+            "\nALL SUBMISSION ARTIFACTS: "
+            + ("PASSED" if passed else "FAILED")
+        )
+        print(f"Runtime profile refreshed: {runtime_built}")
+        for name, path in {**submission_paths, **demo_paths}.items():
+            print(f"{name}: {path.resolve()}")
+        print(f"Demo files generated: {len(demo_manifest['generated_files'])}")
+        for error in safety["blocking_errors"] + demo_check["blocking_errors"]:
+            print(f"BLOCKING: {error}")
         return 0 if passed else 1
 
     return 0

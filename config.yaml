@@ -116,3 +116,19 @@ submission_package:
   require_ranked_candidates: true
   require_score_breakdown: true
   require_safety_report: true
+
+demo_materials:
+  top_n_explanations: 10
+  deck_slide_count: 12
+  include_speaker_notes: true
+  project_title: "EvidenceRank — Candidate Proof Engine"
+  hackathon_track: "INDIA RUNS Track 1"
+  demo_packet_name: "demo_packet.zip"
+  diagrams:
+    generate_mermaid: true
+
+judge_demo:
+  require_ranked_candidates: true
+  require_score_breakdown: true
+  require_safety_report: true
+  require_reproducibility_manifest: true

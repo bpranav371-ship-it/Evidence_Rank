@@ -1,0 +1,11 @@
+flowchart TD
+    A["Candidate Dataset"] --> B["Streaming Candidate Profiler"]
+    B --> C["Candidate Fingerprints"]
+    J["Job Description"] --> D["JD Parser"]
+    C --> E["Candidate Proof Graph"]
+    D --> E
+    E --> F["Baseline Ranker"]
+    F --> G["Honeypot Firewall"]
+    G --> H["Evidence Calibration"]
+    H --> I["Risk-Aware Final Ranking"]
+    I --> O["CSV Output + Audit Reports + Submission Package"]

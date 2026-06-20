@@ -384,3 +384,61 @@ mix. Synthetic benchmarks cannot replace relevance judgments from recruiters
 or leaderboard labels. Weight stability indicates robustness, not optimality.
 All risk and hireability signals remain decision-support evidence for human
 review, never automated hiring decisions.
+
+# Feature 6 Methodology
+
+## Why judge-facing explanations matter
+
+The ranking engine produces detailed machine-readable audits, but judges have
+only a few minutes to understand the core contribution. Feature 6 converts
+existing outputs into concise, traceable explanations without adding new
+ranking signals or changing candidate order.
+
+## Top candidate explanation cards
+
+The explanation-card generator reads only `ranked_candidates.csv`,
+`score_breakdown.csv`, and `top_candidate_proofs.jsonl`. It first identifies
+the requested top candidate IDs, then streams the proof JSONL until those IDs
+are found. It does not read `candidate_fingerprints.jsonl`.
+
+Every statement comes from an existing score, risk flag, supported skill, or
+proof snippet. Missing evidence is explicitly labeled “No explicit snippet
+available.” The cards expose base, risk-adjusted, and calibrated scores so the
+reader can distinguish relevance from later safety adjustments.
+
+## Mermaid diagrams
+
+Three dependency-free Mermaid source files communicate complementary views:
+
+- the architecture diagram follows data from streaming input to final package;
+- the scoring diagram shows positive components, risk penalties, and calibration;
+- the evidence-flow diagram shows how claims become supported, weak, or unsupported.
+
+The files are plain text and render in GitHub or Mermaid-compatible tools.
+
+## Approach deck and demo workflow
+
+The generated twelve-slide Markdown deck maps directly to the implemented
+system: problem, keyword-matching failure, proof graph, firewall, calibration,
+evaluation, outputs, performance, and impact. Speaker notes and a timed
+2–3 minute script keep the story aligned with verifiable repository artifacts.
+
+The judge walkthrough prioritizes the final CSV, score breakdown, explanation
+cards, safety report, and reproducibility manifest. The FAQ states limitations
+and explains why the system remains deterministic and offline.
+
+## Safe demo packet
+
+The demo packet uses a fixed file allowlist. It includes only generated docs,
+top-candidate explanations, runtime/safety/reproducibility reports, and the
+consolidated judge handout. It never recursively archives directories, so raw
+input data, fingerprints, Git history, caches, secrets, and environments cannot
+enter accidentally.
+
+## Limitations
+
+Feature 6 summarizes existing lexical evidence and therefore inherits the
+ranking system’s finite aliases and best-effort timeline extraction. Markdown
+deck material still requires manual visual design and PDF export. Explanation
+cards are communication aids, not new hiring judgments, and human review
+remains required.
