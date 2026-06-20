@@ -228,6 +228,13 @@ def score_candidate(
         "unsupported_required_skills": unsupported_required,
         "neutral_hireability_used": neutral_hireability,
         "strict_rerank_applied": False,
+        "honeypot_risk_score": 0.0,
+        "honeypot_penalty": 0.0,
+        "risk_adjusted_score": round(final_score, 6),
+        "risk_level": "low",
+        "disqualified": False,
+        "risk_flags": [],
+        "firewall_enabled": False,
     }
 
 
@@ -248,4 +255,27 @@ def apply_strict_rerank(score: dict[str, Any], fingerprint: dict[str, Any]) -> d
     )
     adjusted["strict_rerank_applied"] = True
     adjusted["strict_adjustment"] = round(strict_adjustment, 6)
+    if not adjusted.get("firewall_enabled"):
+        adjusted["risk_adjusted_score"] = adjusted["final_score"]
+    return adjusted
+
+
+def apply_honeypot_risk(
+    score: dict[str, Any],
+    risk_report: dict[str, Any],
+) -> dict[str, Any]:
+    adjusted = dict(score)
+    penalty = float(risk_report.get("penalty_recommendation", 0.0))
+    disqualified = bool(risk_report.get("disqualified", False))
+    base_score = float(score.get("final_score", 0.0))
+    adjusted["honeypot_risk_score"] = float(risk_report.get("risk_score", 0.0))
+    adjusted["honeypot_penalty"] = round(penalty, 4)
+    adjusted["risk_adjusted_score"] = round(
+        0.0 if disqualified else clamp(base_score - penalty),
+        6,
+    )
+    adjusted["risk_level"] = str(risk_report.get("risk_level", "low"))
+    adjusted["disqualified"] = disqualified
+    adjusted["risk_flags"] = list(risk_report.get("risk_flags") or [])
+    adjusted["firewall_enabled"] = True
     return adjusted

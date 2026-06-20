@@ -146,6 +146,7 @@ def _group_score(normalized_text: str, skills: set[str], group: set[str]) -> flo
 def build_proof_graph(
     fingerprint: dict[str, Any],
     max_evidence_snippets: int = 5,
+    include_evidence_snippets: bool = True,
 ) -> dict[str, Any]:
     claimed_skills = [str(skill) for skill in fingerprint.get("claimed_skills", []) if skill]
     technical_terms = {
@@ -164,8 +165,12 @@ def build_proof_graph(
     contextual_normalized = (
         f"{strong_normalized} {education_normalized} {raw_normalized}".strip()
     )
-    strong_sentence_pairs = _sentence_pairs((career_text, title_text))
-    education_sentence_pairs = _sentence_pairs((education_text,))
+    strong_sentence_pairs = (
+        _sentence_pairs((career_text, title_text)) if include_evidence_snippets else []
+    )
+    education_sentence_pairs = (
+        _sentence_pairs((education_text,)) if include_evidence_snippets else []
+    )
     supported: list[str] = []
     weakly_supported: list[str] = []
     unsupported: list[str] = []
@@ -173,32 +178,46 @@ def build_proof_graph(
 
     for skill in claimed_skills:
         aliases = _aliases_for(skill)
-        strong_snippets = _matching_snippets(
-            strong_sentence_pairs,
-            aliases,
-            max_evidence_snippets,
-        )
-        weak_snippets = _matching_snippets(
-            education_sentence_pairs,
-            aliases,
-            max_evidence_snippets,
-        )
-        if len(weak_snippets) < max_evidence_snippets:
-            weak_snippets.extend(
-                snippet
-                for snippet in _contextual_raw_snippets(
-                    raw_normalized,
-                    aliases,
-                    max_evidence_snippets - len(weak_snippets),
+        if include_evidence_snippets:
+            strong_snippets = _matching_snippets(
+                strong_sentence_pairs,
+                aliases,
+                max_evidence_snippets,
+            )
+            weak_snippets = _matching_snippets(
+                education_sentence_pairs,
+                aliases,
+                max_evidence_snippets,
+            )
+            if len(weak_snippets) < max_evidence_snippets:
+                weak_snippets.extend(
+                    snippet
+                    for snippet in _contextual_raw_snippets(
+                        raw_normalized,
+                        aliases,
+                        max_evidence_snippets - len(weak_snippets),
+                    )
+                    if snippet not in weak_snippets
                 )
-                if snippet not in weak_snippets
+        else:
+            strong_snippets = (
+                ["evidence-present"]
+                if _contains_normalized(f" {strong_normalized} ", aliases)
+                else []
+            )
+            weak_snippets = (
+                ["context-present"]
+                if _contains_normalized(f" {education_normalized} ", aliases)
+                else []
             )
         if strong_snippets:
             supported.append(skill)
-            evidence_snippets[skill] = strong_snippets
+            if include_evidence_snippets:
+                evidence_snippets[skill] = strong_snippets
         elif weak_snippets:
             weakly_supported.append(skill)
-            evidence_snippets[skill] = weak_snippets
+            if include_evidence_snippets:
+                evidence_snippets[skill] = weak_snippets
         else:
             unsupported.append(skill)
 

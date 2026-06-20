@@ -22,3 +22,28 @@ ranking:
     extremely_high_keyword_density: 0.10
     missing_skills: 0.05
     missing_experience: 0.05
+
+honeypot_firewall:
+  enabled: false
+  strict_top_n: 10
+  risk_rerank_pool_size: 500
+  disqualify_severe: true
+  max_risk_penalty: 0.50
+  risk_thresholds:
+    low: 0.24
+    medium: 0.49
+    high: 0.74
+    severe: 1.00
+  penalties:
+    zero_duration_expert_claim: 0.25
+    expert_claim_without_tenure: 0.20
+    excessive_keyword_density: 0.15
+    buzzword_stuffing: 0.15
+    many_claimed_skills_weak_evidence: 0.18
+    unsupported_required_skill: 0.20
+    weak_proof_alignment: 0.15
+    seniority_evidence_mismatch: 0.15
+    title_skill_mismatch: 0.12
+    research_only_for_production_jd: 0.08
+    missing_availability_signals: 0.03
+    empty_profile_text: 0.50

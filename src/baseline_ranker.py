@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .audit_report import HoneypotAuditWriter
+from .honeypot_firewall import HoneypotFirewall
 from .proof_graph import build_proof_graph
-from .scoring_engine import apply_strict_rerank, score_candidate
+from .risk_reranker import apply_risk_adjusted_reranking
+from .scoring_engine import apply_honeypot_risk, apply_strict_rerank, score_candidate
 from .utils import Timer, log, memory_usage_mb
 
 
@@ -25,8 +28,12 @@ def _reverse_text_key(value: str) -> tuple[int, ...]:
 
 
 def _heap_key(item: dict[str, Any]) -> tuple[float, tuple[int, ...]]:
+    ranking_score = item["score"].get(
+        "risk_adjusted_score",
+        item["score"]["final_score"],
+    )
     return (
-        float(item["score"]["final_score"]),
+        float(ranking_score),
         _reverse_text_key(str(item["candidate_id"])),
     )
 
@@ -40,13 +47,24 @@ def rank_fingerprints(
     score_weights: dict[str, float] | None = None,
     penalties: dict[str, float] | None = None,
     progress_every: int = 10000,
+    enable_honeypot_firewall: bool = False,
+    firewall: HoneypotFirewall | None = None,
+    audit_writer: HoneypotAuditWriter | None = None,
+    strict_top_n: int = 10,
+    risk_rerank_pool_size: int = 500,
 ) -> RankingResult:
     source = Path(fingerprints_path)
     if not source.exists():
         raise FileNotFoundError(f"Candidate fingerprints not found: {source}")
 
     timer = Timer()
-    heap_size = max(1, top_k, strict_rerank_pool_size)
+    heap_size = max(
+        1,
+        top_k,
+        strict_rerank_pool_size,
+        risk_rerank_pool_size if enable_honeypot_firewall else 0,
+    )
+    firewall = firewall or HoneypotFirewall()
     heap: list[tuple[float, tuple[int, ...], int, dict[str, Any]]] = []
     total_scored = 0
     errors = 0
@@ -60,7 +78,11 @@ def rank_fingerprints(
                 fingerprint = json.loads(line)
                 if not isinstance(fingerprint, dict):
                     raise ValueError("fingerprint row is not an object")
-                proof_graph = build_proof_graph(fingerprint, max_evidence_snippets)
+                proof_graph = build_proof_graph(
+                    fingerprint,
+                    max_evidence_snippets,
+                    include_evidence_snippets=False,
+                )
                 score = score_candidate(
                     jd_profile,
                     fingerprint,
@@ -68,11 +90,24 @@ def rank_fingerprints(
                     score_weights=score_weights,
                     penalties=penalties,
                 )
+                risk_report = None
+                if enable_honeypot_firewall:
+                    risk_report = firewall.assess(
+                        fingerprint,
+                        proof_graph=proof_graph,
+                        jd_profile=jd_profile,
+                        component_scores=score,
+                        deep=False,
+                    )
+                    score = apply_honeypot_risk(score, risk_report)
+                    if audit_writer is not None:
+                        audit_writer.record(risk_report)
                 item = {
                     "candidate_id": str(fingerprint.get("candidate_id") or ""),
                     "fingerprint": fingerprint,
                     "proof_graph": proof_graph,
                     "score": score,
+                    "risk_report": risk_report,
                 }
                 key = _heap_key(item)
                 if len(heap) < heap_size:
@@ -100,12 +135,54 @@ def rank_fingerprints(
             str(item["candidate_id"]),
         )
     )
-    for item in shortlist[:strict_rerank_pool_size]:
-        item["score"] = apply_strict_rerank(item["score"], item["fingerprint"])
+    deep_pool_size = max(
+        top_k,
+        strict_rerank_pool_size,
+        risk_rerank_pool_size if enable_honeypot_firewall else 0,
+    )
+    for index, item in enumerate(shortlist[:deep_pool_size]):
+        item["proof_graph"] = build_proof_graph(
+            item["fingerprint"],
+            max_evidence_snippets,
+            include_evidence_snippets=True,
+        )
+        item["score"] = score_candidate(
+            jd_profile,
+            item["fingerprint"],
+            item["proof_graph"],
+            score_weights=score_weights,
+            penalties=penalties,
+        )
+        if index < strict_rerank_pool_size:
+            item["score"] = apply_strict_rerank(item["score"], item["fingerprint"])
+
+    if enable_honeypot_firewall:
+        risk_pool_items = shortlist[:risk_rerank_pool_size]
+        for item in risk_pool_items:
+            item["lightweight_risk_report"] = item.get("risk_report") or {}
+        shortlist = apply_risk_adjusted_reranking(
+            risk_pool_items,
+            top_k=max(top_k, risk_rerank_pool_size),
+            strict_top_n=strict_top_n,
+            firewall=firewall,
+            jd_profile=jd_profile,
+            disqualify_severe=firewall.config.disqualify_severe,
+        )
+        if audit_writer is not None:
+            for item in risk_pool_items:
+                audit_writer.replace_with_deep_report(
+                    item.get("lightweight_risk_report") or {},
+                    item.get("risk_report") or {},
+                )
 
     shortlist.sort(
         key=lambda item: (
-            -float(item["score"]["final_score"]),
+            -float(
+                item["score"].get(
+                    "risk_adjusted_score",
+                    item["score"]["final_score"],
+                )
+            ),
             str(item["candidate_id"]),
         )
     )

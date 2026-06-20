@@ -137,7 +137,7 @@ The JD is held once in memory. Candidate fingerprints are read one JSONL line at
 
 Feature 2 uses standard-library text operations and no embeddings, GPU, internet, or external APIs.
 
-## Intentionally deferred to Feature 3
+## Feature 2 boundaries addressed by Feature 3
 
 - Impossible career timelines
 - Zero-duration expert skills
@@ -145,3 +145,81 @@ Feature 2 uses standard-library text operations and no embeddings, GPU, internet
 - Research-only and service-only career penalties
 - Title-chasing patterns
 - Full keyword-stuffer and honeypot filtering
+
+# Feature 3 Methodology
+
+## Honeypot Firewall
+
+The firewall is a deterministic confidence layer applied after normal candidate scoring. It does not replace relevance scoring and does not assume every unusual profile is fraudulent. Each rule produces a named flag, severity, evidence note derived from candidate fields, and bounded risk contribution.
+
+The final report contains a 0-1 risk score, low/medium/high/severe level, recommended penalty, warning and severe flags, and a disqualification decision for only the strongest compound anomalies.
+
+## Lightweight and deep analysis
+
+Every fingerprint receives inexpensive streaming checks for:
+
+- keyword density versus evidence alignment;
+- many claims with weak evidence;
+- explicit zero-duration expert patterns when available;
+- response, activity, and availability risks;
+- empty-profile indicators.
+
+Only the bounded rerank pool receives deeper checks for title-career mismatch, seniority and experience conflicts, research-only production gaps, service-only profiles without relevant depth, unsupported JD requirements, and retrieval/evaluation/production contradictions.
+
+Full evidence snippets are also generated only for this shortlist. This keeps runtime and memory proportional to the configured pool rather than the full candidate population.
+
+## Zero-duration expert detection
+
+The strongest form uses structured skill details when present, looking for expert or advanced proficiency with zero or near-zero duration. If structured details are unavailable, the rule uses only explicit textual patterns such as "expert ... 0 months." It does not infer a zero duration from missing information.
+
+## Keyword stuffing
+
+Keyword rules combine Feature 1 keyword density, number of claimed and detected skills, career-evidence length, and Candidate Proof Graph alignment. Dense vocabulary alone is not severe. Risk increases when it is paired with weak career proof.
+
+## Title, career, and proof contradictions
+
+The firewall checks whether:
+
+- AI/ML titles have corresponding AI/ML career evidence;
+- non-technical titles are paired with unsupported deep-AI claims;
+- senior positioning has realistic experience and proof;
+- research-heavy profiles show production evidence for a production-focused JD;
+- service-company evidence contains relevant AI/retrieval/ranking depth;
+- required, retrieval, evaluation, and production claims have proof-graph support.
+
+## Risk-adjusted scoring
+
+Feature 2 computes the base final score. Feature 3 applies:
+
+```text
+risk_adjusted_score = max(0, base_final_score - honeypot_penalty)
+```
+
+Penalty bands:
+
+- low risk: 0.00-0.03;
+- medium risk: 0.04-0.10;
+- high risk: 0.11-0.25;
+- severe risk: 0.30-0.50.
+
+Severe profiles are disqualified only when configured and supported by a strong or compound anomaly such as an empty profile, impossible experience, or zero-duration expertise combined with stuffing and weak proof.
+
+## Strict top-10 reranking
+
+The top risk pool is re-evaluated with full proof graphs. Severe profiles cannot enter the top 10. High-risk profiles require exceptionally strong proof alignment; otherwise a top-10 guard penalty pushes them lower. This targets the hackathon's top-rank-sensitive metrics without filtering the entire population aggressively.
+
+## Audit outputs
+
+The system writes:
+
+- `honeypot_audit.json` for aggregate risk counts and top-rank summaries;
+- `honeypot_flags.csv` for candidate-level flags and evidence reasons;
+- `rerank_audit_top100.csv` for original and adjusted rank comparison.
+
+Audit files are produced incrementally where possible. Only shortlist candidate objects remain in memory.
+
+## Limitations and fairness
+
+The fingerprint format does not preserve every original role date or structured skill-duration field. Timeline and zero-duration checks therefore use structured values when available and conservative text fallbacks otherwise.
+
+**The firewall does not claim that a candidate is fake. It detects profile-risk patterns that may reduce ranking confidence. Human review is still required.**

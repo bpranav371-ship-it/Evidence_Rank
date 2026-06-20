@@ -12,6 +12,8 @@ REQUIRED_COLUMNS = ("candidate_id", "rank", "score", "reasoning")
 def validate_ranked_candidates(
     csv_path: Path | str,
     expected_rows: int | None = None,
+    score_breakdown_path: Path | str | None = None,
+    firewall_enabled: bool = False,
 ) -> dict[str, Any]:
     path = Path(csv_path)
     errors: list[str] = []
@@ -69,5 +71,45 @@ def validate_ranked_candidates(
         expected_ranks = list(range(1, len(rows) + 1))
         if ranks != expected_ranks:
             errors.append("Ranks must start at 1 and be continuous in row order.")
+
+    if firewall_enabled and score_breakdown_path is not None:
+        breakdown = Path(score_breakdown_path)
+        if not breakdown.exists():
+            errors.append(f"Risk-aware score breakdown does not exist: {breakdown}")
+        else:
+            try:
+                with breakdown.open("r", encoding="utf-8-sig", newline="") as handle:
+                    risk_rows = list(csv.DictReader(handle))
+                for row_number, row in enumerate(risk_rows, start=2):
+                    try:
+                        risk_score = float(str(row.get("risk_adjusted_score") or ""))
+                        if not math.isfinite(risk_score) or not 0.0 <= risk_score <= 1.0:
+                            errors.append(
+                                f"Breakdown row {row_number}: risk_adjusted_score must be between 0 and 1."
+                            )
+                    except ValueError:
+                        errors.append(
+                            f"Breakdown row {row_number}: risk_adjusted_score is not numeric."
+                        )
+                    disqualified = str(row.get("disqualified") or "").lower() == "true"
+                    if disqualified:
+                        errors.append(
+                            f"Breakdown row {row_number}: disqualified candidate appears in ranked output."
+                        )
+                    flags = str(row.get("risk_flags") or "")
+                    if "\n" in flags or "\r" in flags:
+                        errors.append(
+                            f"Breakdown row {row_number}: risk_flags is not parseable."
+                        )
+                    try:
+                        rank = int(str(row.get("rank") or "0"))
+                    except ValueError:
+                        rank = 0
+                    if rank <= 10 and str(row.get("risk_level") or "").lower() == "severe":
+                        errors.append(
+                            f"Breakdown row {row_number}: severe-risk candidate appears in top 10."
+                        )
+            except (OSError, csv.Error, UnicodeDecodeError) as exc:
+                errors.append(f"Risk-aware score breakdown is not readable: {exc}")
 
     return {"valid": not errors, "errors": errors, "row_count": len(rows)}

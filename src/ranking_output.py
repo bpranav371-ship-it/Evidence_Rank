@@ -12,6 +12,12 @@ BREAKDOWN_COLUMNS = (
     "candidate_id",
     "rank",
     "final_score",
+    "risk_adjusted_score",
+    "honeypot_risk_score",
+    "honeypot_penalty",
+    "risk_level",
+    "disqualified",
+    "risk_flags",
     "jd_relevance_score",
     "must_have_skill_score",
     "proof_alignment_score",
@@ -49,6 +55,15 @@ def build_reasoning(item: dict[str, Any]) -> str:
         concerns.append("availability signals are incomplete")
     if float(score.get("penalty_score", 0.0)) > 0:
         concerns.append("basic profile-quality penalties apply")
+    if score.get("firewall_enabled"):
+        risk_level = str(score.get("risk_level", "low"))
+        if risk_level == "low":
+            strengths.append("low honeypot risk")
+        elif score.get("risk_flags"):
+            concerns.append(
+                "risk flags: "
+                + ", ".join(str(flag).replace("_", " ") for flag in score["risk_flags"][:2])
+            )
 
     reasoning = f"Evidence-based match: {'; '.join(strengths)}."
     if concerns:
@@ -76,7 +91,7 @@ def write_ranking_outputs(
                 {
                     "candidate_id": item["candidate_id"],
                     "rank": item["rank"],
-                    "score": f"{float(item['score']['final_score']):.6f}",
+                    "score": f"{float(item['score'].get('risk_adjusted_score', item['score']['final_score'])):.6f}",
                     "reasoning": reasoning,
                 }
             )
@@ -91,6 +106,12 @@ def write_ranking_outputs(
                     "candidate_id": item["candidate_id"],
                     "rank": item["rank"],
                     "final_score": f"{float(score['final_score']):.6f}",
+                    "risk_adjusted_score": f"{float(score.get('risk_adjusted_score', score['final_score'])):.6f}",
+                    "honeypot_risk_score": score.get("honeypot_risk_score", 0.0),
+                    "honeypot_penalty": score.get("honeypot_penalty", 0.0),
+                    "risk_level": score.get("risk_level", "low"),
+                    "disqualified": score.get("disqualified", False),
+                    "risk_flags": "|".join(score.get("risk_flags") or []),
                     "jd_relevance_score": score["jd_relevance_score"],
                     "must_have_skill_score": score["must_have_skill_score"],
                     "proof_alignment_score": score["proof_alignment_score"],

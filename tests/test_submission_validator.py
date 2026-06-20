@@ -57,6 +57,46 @@ class SubmissionValidatorTests(unittest.TestCase):
             result = validate_ranked_candidates(path)
         self.assertFalse(result["valid"])
 
+    def test_risk_validation_rejects_severe_top_10_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            ranked_path = root / "ranked.csv"
+            breakdown_path = root / "breakdown.csv"
+            self._write(
+                ranked_path,
+                [{"candidate_id": "A", "rank": 1, "score": 0.5, "reasoning": "Risk"}],
+            )
+            with breakdown_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=(
+                        "candidate_id",
+                        "rank",
+                        "risk_adjusted_score",
+                        "disqualified",
+                        "risk_level",
+                        "risk_flags",
+                    ),
+                )
+                writer.writeheader()
+                writer.writerow(
+                    {
+                        "candidate_id": "A",
+                        "rank": 1,
+                        "risk_adjusted_score": 0.5,
+                        "disqualified": False,
+                        "risk_level": "severe",
+                        "risk_flags": "buzzword_stuffing",
+                    }
+                )
+            result = validate_ranked_candidates(
+                ranked_path,
+                expected_rows=1,
+                score_breakdown_path=breakdown_path,
+                firewall_enabled=True,
+            )
+        self.assertFalse(result["valid"])
+
 
 if __name__ == "__main__":
     unittest.main()
