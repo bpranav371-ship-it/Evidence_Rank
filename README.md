@@ -44,6 +44,12 @@ Completed:
   - Judge walkthrough, FAQ, and final submission checklist
   - Mermaid architecture, scoring, and evidence-flow diagrams
   - Safe judge demo packet ZIP and automated demo readiness check
+- **Feature 7 - Final Deck Export + Submission Freeze**
+  - Offline 12-slide PPTX and optional PDF export
+  - Final one-page summary and submission guide
+  - SHA-256 hashes for important submission artifacts
+  - Allowlisted final submission bundle
+  - Submission freeze manifest and blocking readiness report
 
 Not implemented:
 
@@ -155,6 +161,15 @@ python run.py --judge-demo-check
 python run.py --build-all-submission-artifacts --top-k 100
 ```
 
+Export and freeze the final submission:
+
+```powershell
+python run.py --export-deck --format pptx
+python run.py --export-deck --format pdf
+python run.py --build-final-submission-bundle --top-k 100
+python run.py --freeze-submission --top-k 100
+```
+
 Recommended final workflow:
 
 ```powershell
@@ -241,6 +256,18 @@ Feature 6:
 - `data/output/demo_packet_manifest.json` - packet allowlist and missing files
 - `data/output/demo_packet.zip` - safe demo bundle without raw candidate data
 - `data/output/judge_demo_check_report.json` - demo readiness result
+
+Feature 7:
+
+- `data/output/EvidenceRank_Approach_Deck.pptx` - final 12-slide approach deck
+- `data/output/EvidenceRank_Approach_Deck.pdf` - offline PDF deck when ReportLab is installed
+- `data/output/pdf_export_instructions.txt` - graceful PDF fallback instructions
+- `data/output/EvidenceRank_One_Page_Summary.md` - concise project summary
+- `data/output/EvidenceRank_Final_Submission_Guide.md` - upload and regeneration guide
+- `data/output/final_artifact_hashes.json` - SHA-256 hashes and file sizes
+- `data/output/submission_freeze_manifest.json` - locked bundle and hash snapshot
+- `data/output/final_submission_bundle.zip` - allowlisted final backup bundle
+- `data/output/final_submission_freeze_report.json` - final readiness result
 
 ## Scoring
 
@@ -349,6 +376,10 @@ python run.py --judge-demo-check
 
 # 6. Rebuild every final artifact in one command
 python run.py --build-all-submission-artifacts --top-k 100
+
+# 7. Export and freeze
+python run.py --export-deck --format pptx
+python run.py --freeze-submission --top-k 100
 ```
 
 Judges should inspect `ranked_candidates.csv`, `score_breakdown.csv`,
@@ -358,5 +389,19 @@ Judges should inspect `ranked_candidates.csv`, `score_breakdown.csv`,
 The final deck PDF should be created manually from `docs/approach_deck.md`.
 Copy the twelve slide sections into PowerPoint, Google Slides, Marp, or another
 presentation tool, render the Mermaid diagrams where useful, and export to PDF.
+
+Feature 7 can also create the deck directly:
+
+```powershell
+python run.py --export-deck --format pptx
+python run.py --export-deck --format pdf
+```
+
+The recommended hackathon uploads are:
+
+- GitHub repository link
+- `data/output/ranked_candidates.csv`
+- `data/output/EvidenceRank_Approach_Deck.pdf` or `.pptx`
+- Optionally `data/output/final_submission_bundle.zip` as a private backup
 
 See [docs/methodology.md](docs/methodology.md) for implementation details.

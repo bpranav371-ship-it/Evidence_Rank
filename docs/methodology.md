@@ -442,3 +442,66 @@ ranking system’s finite aliases and best-effort timeline extraction. Markdown
 deck material still requires manual visual design and PDF export. Explanation
 cards are communication aids, not new hiring judgments, and human review
 remains required.
+
+# Feature 7 Methodology
+
+## Why final deck export exists
+
+Feature 6 defines the judge-facing narrative in Markdown. Feature 7 converts
+that narrative into portable presentation files so the project can be reviewed
+without requiring a Markdown or Mermaid tool. The exporter remains offline and
+does not read candidate inputs or fingerprints.
+
+The twelve-slide structure mirrors the implemented system: problem, proof-based
+idea, architecture, Candidate Proof Graph, Honeypot Firewall, calibration,
+scoring, evaluation, outputs, performance, and impact. Runtime, benchmark, and
+safety values are inserted only from existing reports.
+
+## PPTX and PDF generation
+
+The PPTX writer creates a standards-compliant Open XML presentation with a
+complete theme, slide master, layout relationships, readable typography,
+footers, and slide numbers. PDF export uses ReportLab when installed. If that
+optional dependency is unavailable, the command writes explicit conversion
+instructions and does not fail the rest of the workflow.
+
+No raw candidate text, private input file, or fingerprint store is embedded in
+the deck.
+
+## Artifact hashes
+
+SHA-256 hashes and byte sizes create a stable record of the final CSV, deck,
+packages, safety report, reproducibility manifest, runtime report, and
+reproduction command. The hasher uses an explicit filename allowlist and
+refuses raw input paths or `candidate_fingerprints.jsonl`.
+
+Hashes make accidental post-freeze changes visible. They are integrity
+evidence, not encryption or access control.
+
+## Submission freeze
+
+The freeze command runs CSV validation, submission safety, judge-demo checks,
+deck export, reproducibility metadata, artifact hashing, guide generation, and
+final bundle creation. Its report records Git branch and commit, dirty state,
+required and missing artifacts, recommended uploads, exact final commands, and
+the bundle manifest.
+
+The one-page summary gives judges a compact technical overview. The submission
+guide lists mandatory uploads, regeneration commands, and common failure modes.
+
+## Bundle safety
+
+The final ZIP is constructed from a fixed file allowlist. It never walks
+directories recursively and therefore excludes:
+
+- raw candidate datasets and all `data/input` files;
+- `candidate_fingerprints.jsonl`;
+- Git history, virtual environments, caches, and secrets;
+- unrelated or unexpectedly large generated files.
+
+## Limitations
+
+The exported deck intentionally uses concise deterministic content rather than
+automated free-form narrative. PDF generation depends on ReportLab or manual
+PPTX conversion. A freeze is a point-in-time snapshot: any later change to the
+CSV, deck, configuration, or reports requires rebuilding the hashes and freeze.

@@ -132,3 +132,30 @@ judge_demo:
   require_score_breakdown: true
   require_safety_report: true
   require_reproducibility_manifest: true
+
+final_deck:
+  title: "EvidenceRank — Candidate Proof Engine"
+  subtitle: "INDIA RUNS Track 1"
+  pptx_name: "EvidenceRank_Approach_Deck.pptx"
+  pdf_name: "EvidenceRank_Approach_Deck.pdf"
+  slide_count: 12
+  include_footer: true
+  include_slide_numbers: true
+
+submission_freeze:
+  final_bundle_name: "final_submission_bundle.zip"
+  require_ranked_candidates: true
+  require_score_breakdown: true
+  require_deck: true
+  require_safety_report: true
+  require_reproducibility_manifest: true
+  require_runtime_profile: false
+  recommended_uploads:
+    - "GitHub repository link"
+    - "ranked_candidates.csv"
+    - "EvidenceRank_Approach_Deck.pdf or EvidenceRank_Approach_Deck.pptx"
+
+artifact_hashing:
+  algorithm: "sha256"
+  exclude_raw_data: true
+  exclude_fingerprints: true

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from src.ablation_evaluator import run_ablation
+from src.artifact_hasher import build_artifact_hashes
 from src.benchmark_cases import run_offline_benchmarks
 from src.audit_report import (
     HoneypotAuditWriter,
@@ -17,9 +18,14 @@ from src.baseline_ranker import RankingResult, rank_fingerprints
 from src.candidate_loader import CandidateLoader
 from src.candidate_profiler import CandidateProfiler, CandidateProfilerConfig
 from src.deck_materials import build_deck_materials
+from src.deck_exporter import export_deck
 from src.demo_exporter import build_demo_pack, judge_demo_check
 from src.explanation_cards import build_explanation_cards
 from src.feature_store import IncrementalFeatureStore
+from src.final_submission_freeze import (
+    build_final_submission_bundle,
+    build_freeze_report,
+)
 from src.honeypot_firewall import HoneypotFirewall
 from src.jd_parser import parse_jd_file
 from src.ranking_output import write_ranking_outputs
@@ -147,6 +153,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Bounded shortlist size for deep evidence calibration.",
     )
+    parser.add_argument(
+        "--format",
+        dest="export_format",
+        choices=("pptx", "pdf", "all"),
+        default="pptx",
+        help="Deck export format. Used with --export-deck.",
+    )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to config.yaml.")
     parser.add_argument("--output-dir", default=None, help="Override configured output directory.")
     modes = parser.add_mutually_exclusive_group()
@@ -226,6 +239,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--build-all-submission-artifacts",
         action="store_true",
         help="Build safety, reproducibility, submission, deck, and demo artifacts.",
+    )
+    modes.add_argument(
+        "--export-deck",
+        action="store_true",
+        help="Export the final approach deck as PPTX, PDF, or both.",
+    )
+    modes.add_argument(
+        "--build-final-submission-bundle",
+        action="store_true",
+        help="Build the final allowlisted hackathon submission bundle.",
+    )
+    modes.add_argument(
+        "--freeze-submission",
+        action="store_true",
+        help="Validate, hash, bundle, and freeze the final submission state.",
     )
     return parser
 
@@ -495,6 +523,9 @@ def main(argv: list[str] | None = None) -> int:
             and not args.explain_top_candidates
             and not args.judge_demo_check
             and not args.build_all_submission_artifacts
+            and not args.export_deck
+            and not args.build_final_submission_bundle
+            and not args.freeze_submission
         )
     )
     rank_requested = args.rank or args.profile_and_rank
@@ -926,6 +957,108 @@ def main(argv: list[str] | None = None) -> int:
         for error in safety["blocking_errors"] + demo_check["blocking_errors"]:
             print(f"BLOCKING: {error}")
         return 0 if passed else 1
+
+    if args.export_deck:
+        result = export_deck(
+            PROJECT_ROOT / "docs",
+            output_dir,
+            config,
+            output_format=args.export_format,
+        )
+        print("\nEvidenceRank final deck export complete")
+        print("-" * 42)
+        print(f"Slides: {result['slide_count']}")
+        for name, path in result["created_files"].items():
+            print(f"{name}: {Path(path).resolve()}")
+        for warning in result["warnings"]:
+            print(f"WARNING: {warning}")
+        return 0
+
+    if args.build_final_submission_bundle:
+        export_deck(PROJECT_ROOT / "docs", output_dir, config, output_format="pptx")
+        build_artifact_hashes(output_dir)
+        manifest, paths = build_final_submission_bundle(
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        print("\nEvidenceRank final submission bundle created")
+        print("-" * 47)
+        print(f"Included files: {len(manifest['included_files'])}")
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        return 0
+
+    if args.freeze_submission:
+        ranked_path = output_dir / "ranked_candidates.csv"
+        breakdown_path = output_dir / "score_breakdown.csv"
+        if not ranked_path.exists() or not breakdown_path.exists():
+            print(
+                "Run the final ranking command first:\n"
+                "python run.py --jd data/input/job_description.txt --rank --top-k 100 "
+                "--enable-honeypot-firewall --enable-evidence-calibration",
+                file=sys.stderr,
+            )
+            return 2
+        validation = validate_ranked_candidates(
+            ranked_path,
+            expected_rows=expected_ranked_rows(output_dir, top_k),
+            score_breakdown_path=breakdown_path,
+            firewall_enabled=True,
+            calibration_enabled=True,
+        )
+        safety = validate_final_submission(
+            output_dir,
+            top_k=top_k,
+            config=config.get("submission_safety", {}),
+        )
+        demo_check = judge_demo_check(PROJECT_ROOT, output_dir)
+        export_result = export_deck(
+            PROJECT_ROOT / "docs",
+            output_dir,
+            config,
+            output_format="all",
+        )
+        build_reproducibility_manifest(PROJECT_ROOT, output_dir, config, top_k=top_k)
+        hash_report = build_artifact_hashes(output_dir)
+        bundle_manifest, paths = build_final_submission_bundle(
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        # Refresh hashes after guide/manifest creation, then rebuild once so the
+        # bundle contains the final hash report. The bundle itself is not hashed,
+        # avoiding a circular integrity dependency.
+        hash_report = build_artifact_hashes(output_dir)
+        bundle_manifest, paths = build_final_submission_bundle(
+            output_dir,
+            config,
+            top_k=top_k,
+        )
+        report = build_freeze_report(
+            PROJECT_ROOT,
+            output_dir,
+            config,
+            validation=validation,
+            safety=safety,
+            judge_check=demo_check,
+            bundle_manifest=bundle_manifest,
+        )
+        print(
+            "\nSUBMISSION FREEZE: "
+            + ("PASSED" if report["passed"] else "FAILED")
+        )
+        for error in report["blocking_errors"]:
+            print(f"BLOCKING: {error}")
+        for warning in [*export_result["warnings"], *report["warnings"]]:
+            print(f"WARNING: {warning}")
+        print(f"Artifact hashes: {Path(hash_report['output_path']).resolve()}")
+        print(f"Final bundle: {paths['final_submission_bundle'].resolve()}")
+        print(
+            "Freeze report: "
+            f"{(output_dir / 'final_submission_freeze_report.json').resolve()}"
+        )
+        return 0 if report["passed"] else 1
 
     return 0
 
