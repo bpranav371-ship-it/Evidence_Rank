@@ -223,3 +223,89 @@ Audit files are produced incrementally where possible. Only shortlist candidate 
 The fingerprint format does not preserve every original role date or structured skill-duration field. Timeline and zero-duration checks therefore use structured values when available and conservative text fallbacks otherwise.
 
 **The firewall does not claim that a candidate is fake. It detects profile-risk patterns that may reduce ranking confidence. Human review is still required.**
+
+# Feature 4 Methodology
+
+## Career evidence extraction
+
+Feature 4 extracts titles, seniority, explicit experience mentions, calendar
+years, companies, production terms, retrieval/ranking terms, evaluation terms,
+leadership terms, and project language from existing fingerprints. The
+extractor is deterministic and never invents missing career facts. New
+fingerprints store a compact `career_evidence_v2`; older fingerprints are
+parsed on demand inside the bounded calibration pool.
+
+Career depth combines evidence length, title variety, duration evidence,
+projects, and ownership language. Separate production, retrieval, evaluation,
+leadership, and consistency scores remain visible for audit.
+
+## JD constraints
+
+The JD constraint layer identifies a role archetype and separates core hard
+skills from preferred supporting terms. For a retrieval/ranking AI role, core
+constraints emphasize Python, embeddings, vector infrastructure, retrieval,
+ranking, and evaluation. Broader technologies and individual metrics remain
+preferred or top-10 signals rather than becoming an unrealistic all-or-nothing
+checklist.
+
+Negative constraints include missing must-have evidence, keyword-only claims,
+research without production, service-only careers without AI depth, and absent
+retrieval, evaluation, or production proof. One weak constraint does not
+disqualify a candidate.
+
+## Hireability calibration
+
+Response rate, recent activity, open-to-work status, interview completion,
+relocation flexibility, and notice period are converted into bounded component
+scores. Missing behavior returns a neutral score near 0.50. Hireability has a
+small weight and cannot compensate for weak technical proof.
+
+## Evidence calibration
+
+Calibration combines proof alignment, career depth and consistency, JD
+constraint match, production/retrieval/evaluation depth, bounded hireability,
+and honeypot risk. It produces an evidence confidence score and strict top-10
+readiness score.
+
+```text
+calibrated_final_score =
+    risk_adjusted_score + calibration_bonus - calibration_penalty
+```
+
+The bonus is capped at 0.08 and penalty at 0.15. Keyword-only profiles,
+unsupported core requirements, and absent JD-critical evidence receive
+penalties. Calibration is applied only to the top 700 candidates by default.
+
+## Ablation testing
+
+The suite compares:
+
+1. keyword-only overlap;
+2. Feature 2 baseline;
+3. baseline plus firewall;
+4. baseline plus firewall plus calibration.
+
+It reports proof alignment, risk, evidence confidence, unsupported requirement
+rate, stuffing rate, production/retrieval evidence rates, keyword-top-100
+overlap, top-10 readiness, and severe top-10 count.
+
+These are proxy sanity metrics because no public ground-truth relevance labels
+are provided. They demonstrate behavioral coherence, not benchmark accuracy.
+
+## Submission safety
+
+The safety validator checks row count, rank continuity, score range and order,
+duplicates, reasoning completeness, score flatness, disqualified candidates,
+severe top-10 risk, empty-profile flags, proof artifacts, risk audits, and
+calibration reports. Blocking errors fail the command; non-blocking concerns
+are reported as warnings and recommended actions.
+
+## Performance and fairness
+
+The full dataset remains streamed. Only lightweight fingerprints and a bounded
+top pool are retained. Deep career, proof, risk, and calibration work is
+restricted to the configured shortlist.
+
+**Hireability and risk signals are used only as ranking confidence signals.
+They should not be treated as final hiring decisions. Human review is
+required.**

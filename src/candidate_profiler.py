@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from .career_evidence import build_career_evidence_profile
 from .text_normalizer import clean_text, flatten_value, tokenize_simple
 from .utils import clamp, safe_float, safe_list
 
@@ -381,7 +382,7 @@ class CandidateProfiler:
         if not _has_value(years_value) and not career_evidence_text:
             anomaly_flags.append("missing_experience")
 
-        return {
+        fingerprint = {
             "candidate_id": candidate_id,
             "raw_text_compact": raw_text_compact,
             "claimed_skills": claimed_skills,
@@ -399,3 +400,18 @@ class CandidateProfiler:
             "keyword_density_score": round(density, 4),
             "skill_evidence_hint_score": round(evidence_hint, 4),
         }
+        career_v2 = build_career_evidence_profile(fingerprint)
+        fingerprint.update(
+            {
+                "career_evidence_v2": career_v2,
+                "parsed_seniority_level": career_v2["seniority_level"],
+                "parsed_experience_mentions": career_v2["parsed_years_of_experience"],
+                "production_evidence_terms": career_v2["production_terms_found"],
+                "retrieval_ranking_evidence_terms": career_v2[
+                    "retrieval_ranking_terms_found"
+                ],
+                "evaluation_evidence_terms": career_v2["evaluation_terms_found"],
+                "leadership_evidence_terms": career_v2["leadership_terms_found"],
+            }
+        )
+        return fingerprint

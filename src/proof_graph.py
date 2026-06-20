@@ -248,6 +248,20 @@ def build_proof_graph(
         known_skills,
         AI_ML_DEPTH_TERMS,
     )
+    career_v2 = fingerprint.get("career_evidence_v2") or {}
+    if isinstance(career_v2, dict):
+        retrieval_score = max(
+            retrieval_score,
+            float(career_v2.get("retrieval_depth_score", 0.0)),
+        )
+        evaluation_score = max(
+            evaluation_score,
+            float(career_v2.get("evaluation_depth_score", 0.0)),
+        )
+        production_score = max(
+            production_score,
+            float(career_v2.get("production_depth_score", 0.0)),
+        )
 
     top_supported = supported[:4]
     if top_supported:
@@ -275,4 +289,5 @@ def build_proof_graph(
         "ai_ml_depth_score": round(ai_depth_score, 4),
         "proof_alignment_score": round(proof_alignment, 4),
         "proof_summary": proof_summary,
+        "career_evidence_v2_used": bool(career_v2),
     }

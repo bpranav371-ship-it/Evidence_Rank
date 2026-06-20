@@ -6,7 +6,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from src.audit_report import HoneypotAuditWriter, audit_existing_fingerprints
+from src.ablation_evaluator import run_ablation
+from src.audit_report import (
+    HoneypotAuditWriter,
+    audit_existing_fingerprints,
+    write_calibration_reports,
+)
 from src.baseline_ranker import RankingResult, rank_fingerprints
 from src.candidate_loader import CandidateLoader
 from src.candidate_profiler import CandidateProfiler, CandidateProfilerConfig
@@ -16,6 +21,7 @@ from src.jd_parser import parse_jd_file
 from src.ranking_output import write_ranking_outputs
 from src.schema_inspector import inspect_schema
 from src.submission_validator import validate_ranked_candidates
+from src.submission_safety import validate_final_submission
 from src.utils import Timer, log
 
 
@@ -105,6 +111,17 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Bounded shortlist size for deep honeypot analysis.",
     )
+    parser.add_argument(
+        "--enable-evidence-calibration",
+        action="store_true",
+        help="Enable bounded evidence, career, constraint, and hireability calibration.",
+    )
+    parser.add_argument(
+        "--calibration-pool-size",
+        type=int,
+        default=None,
+        help="Bounded shortlist size for deep evidence calibration.",
+    )
     parser.add_argument("--config", default=str(DEFAULT_CONFIG_PATH), help="Path to config.yaml.")
     parser.add_argument("--output-dir", default=None, help="Override configured output directory.")
     modes = parser.add_mutually_exclusive_group()
@@ -119,6 +136,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--audit-honeypots",
         action="store_true",
         help="Audit existing fingerprints without producing a new ranking.",
+    )
+    modes.add_argument(
+        "--run-ablation",
+        action="store_true",
+        help="Compare keyword, baseline, firewall, and calibrated ranking variants.",
+    )
+    modes.add_argument(
+        "--validate-final-submission",
+        action="store_true",
+        help="Run final output and ranking safety checks.",
     )
     return parser
 
@@ -192,11 +219,14 @@ def run_ranking(
     enable_honeypot_firewall: bool = False,
     strict_top_n_override: int | None = None,
     risk_pool_override: int | None = None,
+    enable_evidence_calibration: bool = False,
+    calibration_pool_override: int | None = None,
 ) -> tuple[
     RankingResult,
     dict[str, Path],
     dict[str, Any],
     dict[str, Any],
+    dict[str, Any] | None,
     dict[str, Any] | None,
 ]:
     ranking_config = config.get("ranking", {})
@@ -211,6 +241,11 @@ def run_ranking(
         risk_pool_override or firewall_config.get("risk_rerank_pool_size", 500)
     )
     firewall = HoneypotFirewall.from_dict(firewall_config)
+    calibration_config = config.get("evidence_calibration", {})
+    calibration_pool = int(
+        calibration_pool_override
+        or calibration_config.get("calibration_pool_size", 700)
+    )
     jd_profile = parse_jd_file(jd_path)
     audit_summary: dict[str, Any] | None = None
     audit_paths: dict[str, Path] = {}
@@ -230,6 +265,9 @@ def run_ranking(
                 audit_writer=audit_writer,
                 strict_top_n=strict_top_n,
                 risk_rerank_pool_size=risk_pool,
+                enable_evidence_calibration=enable_evidence_calibration,
+                calibration_config=calibration_config,
+                calibration_pool_size=calibration_pool,
             )
             audit_summary = audit_writer.finalize(result.ranked_candidates)
             audit_paths = audit_writer.output_paths
@@ -243,16 +281,35 @@ def run_ranking(
             score_weights=ranking_config.get("score_weights"),
             penalties=ranking_config.get("penalties"),
             progress_every=int(config.get("progress_every", 10000)),
+            enable_evidence_calibration=enable_evidence_calibration,
+            calibration_config=calibration_config,
+            calibration_pool_size=calibration_pool,
         )
     output_paths = write_ranking_outputs(result.ranked_candidates, output_dir)
     output_paths.update(audit_paths)
+    calibration_summary: dict[str, Any] | None = None
+    if enable_evidence_calibration and result.jd_constraints is not None:
+        calibration_summary, calibration_paths = write_calibration_reports(
+            result.calibration_candidates,
+            result.jd_constraints,
+            output_dir,
+        )
+        output_paths.update(calibration_paths)
     validation = validate_ranked_candidates(
         output_paths["ranked_candidates"],
         expected_rows=min(top_k, result.total_candidates_scored),
         score_breakdown_path=output_paths["score_breakdown"],
         firewall_enabled=enable_honeypot_firewall,
+        calibration_enabled=enable_evidence_calibration,
     )
-    return result, output_paths, validation, jd_profile, audit_summary
+    return (
+        result,
+        output_paths,
+        validation,
+        jd_profile,
+        audit_summary,
+        calibration_summary,
+    )
 
 
 def print_ranking_summary(
@@ -264,6 +321,7 @@ def print_ranking_summary(
     memory_safe_mode: bool,
     total_runtime: float,
     audit_summary: dict[str, Any] | None = None,
+    calibration_summary: dict[str, Any] | None = None,
 ) -> None:
     parsed_skills = jd_profile["required_skills"] + jd_profile["preferred_skills"]
     print("\nEvidenceRank ranking complete")
@@ -286,6 +344,30 @@ def print_ranking_summary(
         print(f"Honeypot audit: {output_paths['honeypot_audit'].resolve()}")
         print(f"Honeypot flags: {output_paths['honeypot_flags'].resolve()}")
         print(f"Rerank audit: {output_paths['rerank_audit_top100'].resolve()}")
+    if calibration_summary is not None:
+        print(f"Calibration pool size: {calibration_summary['candidates_calibrated']:,}")
+        print(
+            "Top 10 average readiness: "
+            f"{calibration_summary['top10_average_readiness']:.4f}"
+        )
+        print(
+            "Average evidence confidence: "
+            f"{calibration_summary['average_evidence_confidence']:.4f}"
+        )
+        print(
+            "Average hireability: "
+            f"{calibration_summary['average_hireability']:.4f}"
+        )
+        print(
+            "Negative constraint counts: "
+            f"{json.dumps(calibration_summary['negative_constraint_counts'])}"
+        )
+        print(
+            "Calibration report: "
+            f"{output_paths['evidence_calibration_report'].resolve()}"
+        )
+        print(f"JD constraints: {output_paths['jd_constraints_report'].resolve()}")
+        print(f"Hireability audit: {output_paths['hireability_audit'].resolve()}")
     print(f"Validation result: {'PASS' if validation['valid'] else 'FAIL'}")
     if validation["errors"]:
         for error in validation["errors"]:
@@ -309,11 +391,20 @@ def main(argv: list[str] | None = None) -> int:
     firewall_enabled = bool(
         args.enable_honeypot_firewall or firewall_config.get("enabled", False)
     )
+    calibration_config = config.get("evidence_calibration", {})
+    calibration_enabled = bool(
+        args.enable_evidence_calibration or calibration_config.get("enabled", False)
+    )
 
     profile_requested = (
         args.profile_only
         or args.profile_and_rank
-        or (not args.rank and not args.audit_honeypots)
+        or (
+            not args.rank
+            and not args.audit_honeypots
+            and not args.run_ablation
+            and not args.validate_final_submission
+        )
     )
     rank_requested = args.rank or args.profile_and_rank
 
@@ -340,7 +431,14 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        result, output_paths, validation, jd_profile, audit_summary = run_ranking(
+        (
+            result,
+            output_paths,
+            validation,
+            jd_profile,
+            audit_summary,
+            calibration_summary,
+        ) = run_ranking(
             fingerprints_path,
             resolve_project_path(args.jd_path),
             output_dir,
@@ -349,6 +447,8 @@ def main(argv: list[str] | None = None) -> int:
             enable_honeypot_firewall=firewall_enabled,
             strict_top_n_override=args.strict_top_n,
             risk_pool_override=args.risk_rerank_pool_size,
+            enable_evidence_calibration=calibration_enabled,
+            calibration_pool_override=args.calibration_pool_size,
         )
         print_ranking_summary(
             result,
@@ -359,6 +459,7 @@ def main(argv: list[str] | None = None) -> int:
             bool(config.get("memory_safe_mode", True)),
             timer.elapsed_seconds,
             audit_summary,
+            calibration_summary,
         )
         return 0 if validation["valid"] else 1
 
@@ -395,6 +496,50 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Runtime: {timer.elapsed_seconds:.2f} seconds")
         print(f"Memory-safe mode: {bool(config.get('memory_safe_mode', True))}")
         return 0
+
+    if args.run_ablation:
+        if not args.jd_path:
+            print("Ablation requires --jd PATH_TO_JOB_DESCRIPTION.txt", file=sys.stderr)
+            return 2
+        fingerprints_path = output_dir / "candidate_fingerprints.jsonl"
+        if not fingerprints_path.exists():
+            print("Candidate fingerprints are missing. Run --profile-only first.", file=sys.stderr)
+            return 2
+        report, paths = run_ablation(
+            fingerprints_path,
+            parse_jd_file(resolve_project_path(args.jd_path)),
+            output_dir,
+            top_k,
+            ranking_config,
+            firewall_config,
+            calibration_config,
+        )
+        print("\nEvidenceRank ablation complete")
+        print("-" * 32)
+        print("Variants: " + ", ".join(report["variants"]))
+        for name, path in paths.items():
+            print(f"{name}: {path.resolve()}")
+        print(f"Runtime: {timer.elapsed_seconds:.2f} seconds")
+        return 0
+
+    if args.validate_final_submission:
+        report = validate_final_submission(
+            output_dir,
+            top_k=top_k,
+            config=config.get("submission_safety", {}),
+        )
+        print("\nEvidenceRank final submission safety")
+        print("-" * 38)
+        print(f"Passed: {report['passed']}")
+        for error in report["blocking_errors"]:
+            print(f"BLOCKING: {error}")
+        for warning in report["warnings"]:
+            print(f"WARNING: {warning}")
+        print(
+            "Report: "
+            f"{(output_dir / 'final_submission_safety_report.json').resolve()}"
+        )
+        return 0 if report["passed"] else 1
 
     return 0
 

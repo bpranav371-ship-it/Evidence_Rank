@@ -13,6 +13,15 @@ BREAKDOWN_COLUMNS = (
     "rank",
     "final_score",
     "risk_adjusted_score",
+    "calibrated_final_score",
+    "evidence_confidence_score",
+    "career_depth_score",
+    "jd_constraint_match_score",
+    "negative_constraint_penalty",
+    "calibrated_hireability_score",
+    "top10_readiness_score",
+    "calibration_bonus",
+    "calibration_penalty",
     "honeypot_risk_score",
     "honeypot_penalty",
     "risk_level",
@@ -64,6 +73,15 @@ def build_reasoning(item: dict[str, Any]) -> str:
                 "risk flags: "
                 + ", ".join(str(flag).replace("_", " ") for flag in score["risk_flags"][:2])
             )
+    if score.get("calibration_enabled"):
+        if float(score.get("top10_readiness_score", 0.0)) >= 0.65:
+            strengths.append("strong top-10 evidence readiness")
+        negatives = score.get("negative_constraints_triggered") or []
+        if negatives:
+            concerns.append(
+                "calibration constraints: "
+                + ", ".join(str(value).replace("_", " ") for value in negatives[:2])
+            )
 
     reasoning = f"Evidence-based match: {'; '.join(strengths)}."
     if concerns:
@@ -91,7 +109,7 @@ def write_ranking_outputs(
                 {
                     "candidate_id": item["candidate_id"],
                     "rank": item["rank"],
-                    "score": f"{float(item['score'].get('risk_adjusted_score', item['score']['final_score'])):.6f}",
+                    "score": f"{float(item['score'].get('calibrated_final_score', item['score'].get('risk_adjusted_score', item['score']['final_score']))):.6f}",
                     "reasoning": reasoning,
                 }
             )
@@ -107,6 +125,15 @@ def write_ranking_outputs(
                     "rank": item["rank"],
                     "final_score": f"{float(score['final_score']):.6f}",
                     "risk_adjusted_score": f"{float(score.get('risk_adjusted_score', score['final_score'])):.6f}",
+                    "calibrated_final_score": f"{float(score.get('calibrated_final_score', score.get('risk_adjusted_score', score['final_score']))):.6f}",
+                    "evidence_confidence_score": score.get("evidence_confidence_score", 0.0),
+                    "career_depth_score": score.get("career_depth_score", 0.0),
+                    "jd_constraint_match_score": score.get("jd_constraint_match_score", 0.0),
+                    "negative_constraint_penalty": score.get("negative_constraint_penalty", 0.0),
+                    "calibrated_hireability_score": score.get("calibrated_hireability_score", score.get("hireability_score", 0.5)),
+                    "top10_readiness_score": score.get("top10_readiness_score", 0.0),
+                    "calibration_bonus": score.get("calibration_bonus", 0.0),
+                    "calibration_penalty": score.get("calibration_penalty", 0.0),
                     "honeypot_risk_score": score.get("honeypot_risk_score", 0.0),
                     "honeypot_penalty": score.get("honeypot_penalty", 0.0),
                     "risk_level": score.get("risk_level", "low"),

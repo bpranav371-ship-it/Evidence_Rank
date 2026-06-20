@@ -275,3 +275,82 @@ def audit_existing_fingerprints(
         summary = audit.finalize([])
         paths = audit.output_paths
     return summary, paths
+
+
+def write_calibration_reports(
+    candidates: list[dict[str, Any]],
+    jd_constraints: dict[str, Any],
+    output_dir: Path | str,
+) -> tuple[dict[str, Any], dict[str, Path]]:
+    output = Path(output_dir)
+    output.mkdir(parents=True, exist_ok=True)
+    calibration_path = output / "evidence_calibration_report.json"
+    constraints_path = output / "jd_constraints_report.json"
+    hireability_path = output / "hireability_audit.csv"
+    denominator = max(1, len(candidates))
+    negative_counts: Counter[str] = Counter()
+    for item in candidates:
+        negative_counts.update(
+            item.get("calibration_profile", {}).get("negative_constraints_triggered", [])
+        )
+    summary = {
+        "candidates_calibrated": len(candidates),
+        "average_evidence_confidence": round(
+            sum(float(item.get("calibration_profile", {}).get("evidence_confidence_score", 0.0)) for item in candidates)
+            / denominator,
+            4,
+        ),
+        "average_career_depth": round(
+            sum(float(item.get("career_evidence_profile", {}).get("career_depth_score", 0.0)) for item in candidates)
+            / denominator,
+            4,
+        ),
+        "average_hireability": round(
+            sum(float(item.get("hireability_profile", {}).get("hireability_score", 0.5)) for item in candidates)
+            / denominator,
+            4,
+        ),
+        "top10_average_readiness": round(
+            sum(float(item.get("calibration_profile", {}).get("top10_readiness_score", 0.0)) for item in candidates[:10])
+            / max(1, len(candidates[:10])),
+            4,
+        ),
+        "negative_constraint_counts": dict(negative_counts.most_common()),
+        "notes": "Calibration is applied only to the bounded top candidate pool.",
+    }
+    write_json(calibration_path, summary)
+    write_json(constraints_path, jd_constraints)
+    columns = (
+        "candidate_id",
+        "hireability_score",
+        "response_signal_score",
+        "activity_signal_score",
+        "availability_score",
+        "interview_readiness_score",
+        "relocation_flexibility_score",
+        "notice_period_score",
+        "missing_behavior_signals",
+        "positive_hireability_signals",
+        "negative_hireability_signals",
+        "hireability_notes",
+    )
+    with hireability_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=columns)
+        writer.writeheader()
+        for item in candidates:
+            profile = item.get("hireability_profile", {})
+            writer.writerow(
+                {
+                    **{key: profile.get(key, "") for key in columns},
+                    "candidate_id": item.get("candidate_id", ""),
+                    "missing_behavior_signals": "|".join(profile.get("missing_behavior_signals", [])),
+                    "positive_hireability_signals": "|".join(profile.get("positive_hireability_signals", [])),
+                    "negative_hireability_signals": "|".join(profile.get("negative_hireability_signals", [])),
+                    "hireability_notes": " | ".join(profile.get("hireability_notes", [])),
+                }
+            )
+    return summary, {
+        "evidence_calibration_report": calibration_path,
+        "jd_constraints_report": constraints_path,
+        "hireability_audit": hireability_path,
+    }

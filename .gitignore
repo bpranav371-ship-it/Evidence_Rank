@@ -5,6 +5,10 @@
 .pytest_cache/
 .coverage
 .DS_Store
+.feature*_verification/
+.final_verification/
+.pytest_runtime/
+.verification_runtime/
 
 data/input/*
 !data/input/.gitkeep

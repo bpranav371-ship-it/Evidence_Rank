@@ -2,15 +2,24 @@ from __future__ import annotations
 
 import heapq
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from .audit_report import HoneypotAuditWriter
+from .career_evidence import build_career_evidence_profile
+from .evidence_calibrator import calibrate_evidence
+from .hireability_calibrator import build_hireability_profile
 from .honeypot_firewall import HoneypotFirewall
+from .jd_constraints import build_jd_constraint_profile
 from .proof_graph import build_proof_graph
 from .risk_reranker import apply_risk_adjusted_reranking
-from .scoring_engine import apply_honeypot_risk, apply_strict_rerank, score_candidate
+from .scoring_engine import (
+    apply_evidence_calibration,
+    apply_honeypot_risk,
+    apply_strict_rerank,
+    score_candidate,
+)
 from .utils import Timer, log, memory_usage_mb
 
 
@@ -21,6 +30,8 @@ class RankingResult:
     errors: int
     runtime_seconds: float
     peak_memory_mb: float | None
+    calibration_candidates: list[dict[str, Any]] = field(default_factory=list)
+    jd_constraints: dict[str, Any] | None = None
 
 
 def _reverse_text_key(value: str) -> tuple[int, ...]:
@@ -29,8 +40,8 @@ def _reverse_text_key(value: str) -> tuple[int, ...]:
 
 def _heap_key(item: dict[str, Any]) -> tuple[float, tuple[int, ...]]:
     ranking_score = item["score"].get(
-        "risk_adjusted_score",
-        item["score"]["final_score"],
+        "calibrated_final_score",
+        item["score"].get("risk_adjusted_score", item["score"]["final_score"]),
     )
     return (
         float(ranking_score),
@@ -52,6 +63,9 @@ def rank_fingerprints(
     audit_writer: HoneypotAuditWriter | None = None,
     strict_top_n: int = 10,
     risk_rerank_pool_size: int = 500,
+    enable_evidence_calibration: bool = False,
+    calibration_config: dict[str, Any] | None = None,
+    calibration_pool_size: int = 700,
 ) -> RankingResult:
     source = Path(fingerprints_path)
     if not source.exists():
@@ -63,8 +77,15 @@ def rank_fingerprints(
         top_k,
         strict_rerank_pool_size,
         risk_rerank_pool_size if enable_honeypot_firewall else 0,
+        calibration_pool_size if enable_evidence_calibration else 0,
     )
     firewall = firewall or HoneypotFirewall()
+    calibration_config = calibration_config or {}
+    jd_constraints = (
+        build_jd_constraint_profile(jd_profile)
+        if enable_evidence_calibration
+        else None
+    )
     heap: list[tuple[float, tuple[int, ...], int, dict[str, Any]]] = []
     total_scored = 0
     errors = 0
@@ -139,6 +160,7 @@ def rank_fingerprints(
         top_k,
         strict_rerank_pool_size,
         risk_rerank_pool_size if enable_honeypot_firewall else 0,
+        calibration_pool_size if enable_evidence_calibration else 0,
     )
     for index, item in enumerate(shortlist[:deep_pool_size]):
         item["proof_graph"] = build_proof_graph(
@@ -157,12 +179,16 @@ def rank_fingerprints(
             item["score"] = apply_strict_rerank(item["score"], item["fingerprint"])
 
     if enable_honeypot_firewall:
-        risk_pool_items = shortlist[:risk_rerank_pool_size]
+        effective_risk_pool = max(
+            risk_rerank_pool_size,
+            calibration_pool_size if enable_evidence_calibration else 0,
+        )
+        risk_pool_items = shortlist[:effective_risk_pool]
         for item in risk_pool_items:
             item["lightweight_risk_report"] = item.get("risk_report") or {}
         shortlist = apply_risk_adjusted_reranking(
             risk_pool_items,
-            top_k=max(top_k, risk_rerank_pool_size),
+            top_k=max(top_k, effective_risk_pool),
             strict_top_n=strict_top_n,
             firewall=firewall,
             jd_profile=jd_profile,
@@ -175,17 +201,49 @@ def rank_fingerprints(
                     item.get("risk_report") or {},
                 )
 
+    calibration_candidates: list[dict[str, Any]] = []
+    if enable_evidence_calibration and jd_constraints is not None:
+        calibration_candidates = shortlist[:calibration_pool_size]
+        for item in calibration_candidates:
+            career = item["fingerprint"].get("career_evidence_v2")
+            if not isinstance(career, dict):
+                career = build_career_evidence_profile(item["fingerprint"])
+            hireability = build_hireability_profile(
+                item["fingerprint"],
+                neutral_score=float(calibration_config.get("neutral_hireability_score", 0.50)),
+            )
+            calibration = calibrate_evidence(
+                item["fingerprint"],
+                item["proof_graph"],
+                career,
+                jd_constraints,
+                hireability,
+                item.get("risk_report"),
+                item["score"],
+                calibration_config,
+            )
+            calibration["career_depth_score"] = career["career_depth_score"]
+            item["career_evidence_profile"] = career
+            item["hireability_profile"] = hireability
+            item["calibration_profile"] = calibration
+            item["score"] = apply_evidence_calibration(item["score"], calibration)
+
     shortlist.sort(
         key=lambda item: (
             -float(
                 item["score"].get(
-                    "risk_adjusted_score",
-                    item["score"]["final_score"],
+                    "calibrated_final_score",
+                    item["score"].get(
+                        "risk_adjusted_score",
+                        item["score"]["final_score"],
+                    ),
                 )
             ),
             str(item["candidate_id"]),
         )
     )
+    if enable_evidence_calibration:
+        calibration_candidates = shortlist[:calibration_pool_size]
     ranked = shortlist[: min(top_k, len(shortlist))]
     for rank, item in enumerate(ranked, start=1):
         item["rank"] = rank
@@ -199,4 +257,6 @@ def rank_fingerprints(
         errors=errors,
         runtime_seconds=timer.elapsed_seconds,
         peak_memory_mb=peak_memory,
+        calibration_candidates=calibration_candidates,
+        jd_constraints=jd_constraints,
     )

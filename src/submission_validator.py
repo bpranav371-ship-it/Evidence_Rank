@@ -14,6 +14,7 @@ def validate_ranked_candidates(
     expected_rows: int | None = None,
     score_breakdown_path: Path | str | None = None,
     firewall_enabled: bool = False,
+    calibration_enabled: bool = False,
 ) -> dict[str, Any]:
     path = Path(csv_path)
     errors: list[str] = []
@@ -111,5 +112,22 @@ def validate_ranked_candidates(
                         )
             except (OSError, csv.Error, UnicodeDecodeError) as exc:
                 errors.append(f"Risk-aware score breakdown is not readable: {exc}")
+    if calibration_enabled and score_breakdown_path is not None:
+        try:
+            with Path(score_breakdown_path).open("r", encoding="utf-8-sig", newline="") as handle:
+                rows = list(csv.DictReader(handle))
+            for row_number, row in enumerate(rows, start=2):
+                try:
+                    value = float(str(row.get("calibrated_final_score") or ""))
+                    if not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                        errors.append(
+                            f"Breakdown row {row_number}: calibrated_final_score must be between 0 and 1."
+                        )
+                except ValueError:
+                    errors.append(
+                        f"Breakdown row {row_number}: calibrated_final_score is not numeric."
+                    )
+        except (OSError, csv.Error, UnicodeDecodeError) as exc:
+            errors.append(f"Calibrated score breakdown is not readable: {exc}")
 
     return {"valid": not errors, "errors": errors, "row_count": len(rows)}

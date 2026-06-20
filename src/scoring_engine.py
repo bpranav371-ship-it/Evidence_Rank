@@ -235,6 +235,16 @@ def score_candidate(
         "disqualified": False,
         "risk_flags": [],
         "firewall_enabled": False,
+        "evidence_confidence_score": 0.0,
+        "career_depth_score": 0.0,
+        "jd_constraint_match_score": 0.0,
+        "negative_constraint_penalty": 0.0,
+        "calibrated_hireability_score": round(hireability, 4),
+        "top10_readiness_score": 0.0,
+        "calibration_bonus": 0.0,
+        "calibration_penalty": 0.0,
+        "calibrated_final_score": round(final_score, 6),
+        "calibration_enabled": False,
     }
 
 
@@ -278,4 +288,36 @@ def apply_honeypot_risk(
     adjusted["disqualified"] = disqualified
     adjusted["risk_flags"] = list(risk_report.get("risk_flags") or [])
     adjusted["firewall_enabled"] = True
+    if not adjusted.get("calibration_enabled"):
+        adjusted["calibrated_final_score"] = adjusted["risk_adjusted_score"]
+    return adjusted
+
+
+def apply_evidence_calibration(
+    score: dict[str, Any],
+    calibration: dict[str, Any],
+) -> dict[str, Any]:
+    adjusted = dict(score)
+    base = float(score.get("risk_adjusted_score", score.get("final_score", 0.0)))
+    calibrated = clamp(
+        base
+        + float(calibration.get("calibration_bonus", 0.0))
+        - float(calibration.get("calibration_penalty", 0.0))
+    )
+    for field in (
+        "evidence_confidence_score",
+        "jd_constraint_match_score",
+        "negative_constraint_penalty",
+        "calibrated_hireability_score",
+        "top10_readiness_score",
+        "calibration_bonus",
+        "calibration_penalty",
+    ):
+        adjusted[field] = calibration.get(field, 0.0)
+    adjusted["career_depth_score"] = calibration.get("career_depth_score", 0.0)
+    adjusted["calibrated_final_score"] = round(calibrated, 6)
+    adjusted["calibration_enabled"] = True
+    adjusted["negative_constraints_triggered"] = calibration.get(
+        "negative_constraints_triggered", []
+    )
     return adjusted

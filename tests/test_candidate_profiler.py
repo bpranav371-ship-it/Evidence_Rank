@@ -59,7 +59,7 @@ class CandidateProfilerTests(unittest.TestCase):
         }
         fingerprint = CandidateProfiler().profile(record, row_number=7)
 
-        self.assertEqual(set(fingerprint), REQUIRED_KEYS)
+        self.assertTrue(REQUIRED_KEYS.issubset(set(fingerprint)))
         self.assertEqual(fingerprint["candidate_id"], "GENERATED_000000007")
         self.assertIn("missing_candidate_id", fingerprint["anomaly_flags"])
         self.assertIn("Python", fingerprint["technical_terms"])
