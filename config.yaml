@@ -1,0 +1,7 @@
+input_path: data/input/candidates.jsonl
+output_dir: data/output
+batch_size: 1000
+progress_every: 10000
+memory_safe_mode: true
+max_text_length_per_candidate: 12000
+enable_debug_samples: true

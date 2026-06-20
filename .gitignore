@@ -1,0 +1,12 @@
+.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+.DS_Store
+
+data/input/*
+!data/input/.gitkeep
+data/output/*
+!data/output/.gitkeep
