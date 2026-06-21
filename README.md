@@ -1,437 +1,195 @@
-# EvidenceRank - Candidate Proof Engine
+# EvidenceRank — Candidate Proof Engine
 
-**Hackathon:** INDIA RUNS Track 1 - Intelligent Candidate Discovery
+An offline, evidence-grounded candidate ranking system for INDIA RUNS Track 1.
 
-EvidenceRank is a CPU-only, offline candidate ranking system designed for roughly 100,000 professional profiles. It separates skill claims from profile evidence, streams candidates in low-memory mode, and keeps only bounded reranking pools in memory.
+**Python:** 3.11–3.12
+**License:** MIT License placeholder
+**Build/Test:** 75 tests passing
 
-## 90-second judge demo
+## What This Is
 
-Windows:
+- Ranks candidates beyond résumé keyword overlap by checking whether claimed skills have career evidence.
+- Combines semantic-lite TF-IDF matching, a Candidate Proof Graph, a Honeypot Firewall, and evidence calibration.
+- Runs locally on CPU with streaming input, incremental output, deterministic rules, and bounded reranking pools.
+- Designed to process 100,000+ candidate profiles without loading the full dataset into memory.
+- Implemented milestones: Feature 1 profiler, Feature 2 proof ranker, Feature 3 firewall, Feature 4 calibration, Feature 5 submission suite, Feature 6 judge materials, and Feature 7 submission freeze.
+
+## System Requirements
+
+- Python `>=3.11,<3.13`
+- Windows, Linux, or macOS
+- CPU-only; no GPU or external API required
+- 4 GB RAM minimum; 8 GB recommended for comfortable operation
+- Approximately 1 GB free disk space for the environment and generated artifacts, excluding the private dataset
+
+## Installation
+
+```bash
+git clone https://github.com/bpranav371-ship-it/Evidence_Rank.git
+cd Evidence_Rank
+python -m venv .venv
+```
+
+Windows PowerShell:
 
 ```powershell
-python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-python run.py --quick-demo
+python run.py --help
 ```
 
 Linux/macOS:
 
 ```bash
-python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python run.py --quick-demo
+python run.py --help
 ```
 
-This uses tracked synthetic data only and writes demo outputs to `data/output/demo/`.
+For an exact documented dependency snapshot, use `requirements-freeze.txt`.
 
-## Feature status
+## 30-Second Quick Start
 
-Completed:
+Run the complete profiler and ranker on tracked synthetic data:
 
-- **Feature 1 - Streaming Candidate Profiler**
-  - Schema discovery for CSV, JSON, JSONL, and Parquet
-  - Low-memory candidate loading
-  - Deterministic candidate fingerprints
-  - Incremental JSONL feature storage
-- **Feature 2 - Baseline JD Ranker + Candidate Proof Graph**
-  - Rule-based JD parsing
-  - Evidence-supported skill matching
-  - Explainable weighted scoring
-  - Strict shortlist reranking
-  - Ranked CSV, score breakdown, proof output, and validation
-- **Feature 3 - Honeypot Firewall + Risk-Aware Reranking**
-  - Explainable anomaly and contradiction rules
-  - Bounded risk scores and penalties
-  - Lightweight streaming checks plus deep shortlist analysis
-  - Strict top-10 risk protection
-  - Honeypot and reranking audit outputs
-- **Feature 4 - Evidence-Calibrated Hiring Intelligence + Ablation Safety Suite**
-  - Structured career evidence and timeline extraction
-  - JD-specific positive and negative constraints
-  - Calibrated behavioral hireability signals
-  - Bounded evidence calibration for the top candidate pool
-  - Four-variant proxy ablation reports
-  - Final submission safety validation
-- **Feature 5 - Submission-Grade Evaluation, Reproducibility, and Packaging Suite**
-  - Eight deterministic offline benchmark cases
-  - Controlled weight-sensitivity analysis
-  - Runtime, memory, and 100,000-candidate projections
-  - Git/config/environment reproducibility metadata
-  - Clean submission ZIP generation and one-command final checks
-- **Feature 6 - Judge Demo Polish + Approach Deck Material Generator**
-  - Evidence-grounded top-10 explanation cards
-  - Twelve-slide approach deck content and a timed demo script
-  - Judge walkthrough, FAQ, and final submission checklist
-  - Mermaid architecture, scoring, and evidence-flow diagrams
-  - Safe judge demo packet ZIP and automated demo readiness check
-- **Feature 7 - Final Deck Export + Submission Freeze**
-  - Offline 12-slide PPTX and optional PDF export
-  - Final one-page summary and submission guide
-  - SHA-256 hashes for important submission artifacts
-  - Allowlisted final submission bundle
-  - Submission freeze manifest and blocking readiness report
-
-Not implemented:
-
-- Dashboard or frontend
-- External APIs or LLM-generated explanations
-
-## Why EvidenceRank is not keyword matching
-
-EvidenceRank keeps three ideas separate:
-
-1. What the candidate claims
-2. What their title and career history support
-3. Whether behavioral, availability, and profile-risk signals make the ranking trustworthy
-
-The Candidate Proof Graph classifies skills as supported, weakly supported, or unsupported. The Honeypot Firewall then detects suspicious combinations such as dense buzzwords with weak evidence, unsupported senior AI positioning, experience contradictions, or retrieval/evaluation claims without proof.
-
-Semantic-lite relevance combines the existing lexical score with offline word and
-character TF-IDF similarity. It downloads no model and safely falls back to lexical
-matching if scikit-learn is unavailable.
-
-**Fairness note:** EvidenceRank does not penalize candidates for working at service
-companies. It only lowers ranking confidence when the profile lacks role-relevant
-evidence.
-
-## System constraints
-
-- CPU-only and offline
-- No API or network calls during profiling or ranking
-- JSONL and CSV streamed one record at a time
-- Parquet read in configurable batches
-- Default batch size: 1,000
-- Fingerprints written immediately to JSONL
-- Ranking keeps only bounded top pools in a heap
-- Full candidate DataFrames are never created
-- Full evidence snippets and deep firewall checks run only on the shortlist
-
-## Setup
-
-```powershell
-cd Evidence_Rank
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+```bash
+python run.py --quick-demo --top-k 5
 ```
 
-Place candidate data and the job description in `data/input/`. Raw input and generated output files are ignored by Git.
+Validate the demo output:
 
-## Commands
-
-Profile only:
-
-```powershell
-python run.py --input data/input/candidates.jsonl --profile-only
-python run.py --input data/input/candidates.jsonl --profile-only --limit 5000 --batch-size 500
+```bash
+python run.py --validate-final-submission --top-k 5 --output-dir data/output/demo
 ```
 
-Rank existing fingerprints without the firewall:
+Expected outputs are written to `data/output/demo/ranked_candidates.csv`, `data/output/demo/score_breakdown.csv`, and `data/output/demo/top_candidate_proofs.jsonl`.
 
-```powershell
-python run.py --jd data/input/job_description.txt --rank --top-k 100
+## Architecture Overview
+
+EvidenceRank streams candidate records into compact fingerprints, parses the job description once, scores candidates incrementally, and retains only bounded shortlists for deeper checks. Ranking remains CPU-only, offline, and deterministic.
+
+Major stages:
+
+1. **Profile** — discover schema and create candidate fingerprints incrementally.
+2. **Rank** — combine lexical and semantic-lite JD relevance with required-skill and proof scores.
+3. **Firewall** — identify explainable profile-risk patterns and protect top ranks.
+4. **Calibrate** — assess career depth, JD constraints, hireability signals, and top-10 readiness.
+5. **Package / Freeze** — validate, hash, document, and bundle submission artifacts.
+
+See `docs/architecture_diagram.mmd` for the Mermaid architecture source.
+
+## CLI Usage
+
+Profile candidates:
+
+```bash
+python run.py --input data/input/candidates.jsonl --profile-only --batch-size 500
 ```
 
-Rank with the firewall:
+Rank existing fingerprints with the full safeguards:
 
-```powershell
-python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall
-```
-
-Rank with firewall and evidence calibration:
-
-```powershell
+```bash
 python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration
 ```
 
-Profile and rank with the firewall:
+Run the synthetic demo:
 
-```powershell
-python run.py --input data/input/candidates.jsonl --jd data/input/job_description.txt --profile-and-rank --top-k 100 --limit 5000 --batch-size 500 --enable-honeypot-firewall
+```bash
+python run.py --quick-demo --top-k 5
 ```
 
-Audit existing fingerprints without reranking:
+Run offline benchmark cases:
 
-```powershell
-python run.py --audit-honeypots
+```bash
+python run.py --jd data/input/job_description.txt --run-benchmark
 ```
 
-Run the proxy ablation suite:
+Run the four-variant ablation:
 
-```powershell
+```bash
 python run.py --jd data/input/job_description.txt --run-ablation --top-k 100
 ```
 
-Validate final submission artifacts:
+Export the approach deck:
 
-```powershell
-python run.py --validate-final-submission --top-k 100
+```bash
+python run.py --export-deck --format all
 ```
 
-Run Feature 5 evaluation and packaging tools:
+Freeze the final submission:
 
-```powershell
-python run.py --jd data/input/job_description.txt --run-benchmark
-python run.py --jd data/input/job_description.txt --run-weight-sensitivity --top-k 100
+```bash
+python run.py --freeze-submission --top-k 100
+```
+
+## API Usage
+
+API server is not part of the default submission build; the project is submitted as an offline CLI ranking system.
+
+## Configuration
+
+Runtime settings are in `config.yaml`. The most important controls are:
+
+- `semantic_matching.enabled` — enables local word and character TF-IDF relevance.
+- `honeypot_firewall.enabled` — sets the default risk-aware reranking behavior.
+- `evidence_calibration.enabled` — sets the default bounded calibration behavior.
+- `batch_size` — controls bounded candidate-loading batches.
+- `reproducibility.reference_year` — fixes time-sensitive ranking logic to a deterministic reference.
+
+CLI flags can enable firewall and calibration without changing the configuration file.
+
+## Output Files
+
+| File | Description | When Generated | Judge Relevance |
+|---|---|---|---|
+| `ranked_candidates.csv` | Final `candidate_id,rank,score,reasoning` submission | Ranking | Primary answer |
+| `score_breakdown.csv` | Component, risk, and calibration scores | Ranking | Scoring transparency |
+| `top_candidate_proofs.jsonl` | Evidence links and proof graphs for top candidates | Ranking | Evidence verification |
+| `honeypot_audit.json` | Aggregate deterministic risk audit | Firewall-enabled ranking | Top-rank safety |
+| `evidence_calibration_report.json` | Calibration and readiness summary | Calibration-enabled ranking | Evidence quality |
+| `final_submission_safety_report.json` | Format and ranking safety checks | Validation/freeze | Submission readiness |
+| `EvidenceRank_Approach_Deck.pptx` | Generated 12-slide project deck | Deck export/freeze | Judge presentation |
+| `EvidenceRank_Approach_Deck.pdf` | Generated PDF deck | PDF/all deck export | Submission deck |
+
+Generated files are written under `data/output/` and are intentionally ignored by Git.
+
+## Key Features
+
+- Semantic-lite JD matching with offline word and character TF-IDF plus lexical fallback.
+- Candidate Proof Graph separating supported, weakly supported, and unsupported skills.
+- Honeypot Firewall applying explainable risk flags and bounded penalties.
+- Evidence Calibration rewarding career-backed retrieval, evaluation, and production depth.
+- Hireability Calibration treating missing behavioral signals neutrally rather than as automatic failure.
+- Deterministic Hinglish normalization for common Indian profile-language variants.
+- Streaming schema discovery and incremental JSONL output for memory-safe profiling.
+- Benchmarks, ablation, sensitivity checks, reproducibility manifests, and submission freezing.
+
+## Performance
+
+- Candidate profiling and baseline scoring stream records instead of retaining full profiles.
+- Deep firewall and calibration logic operates only on bounded shortlist pools.
+- Memory and runtime can be measured on the local machine with:
+
+```bash
 python run.py --jd data/input/job_description.txt --profile-runtime --top-k 100
-python run.py --build-reproducibility-manifest
-python run.py --build-submission-package --top-k 100
-python run.py --final-submit-check --top-k 100
 ```
 
-Build Feature 6 judge materials:
+The generated `data/output/runtime_profile_report.json` records candidate count, runtime, peak RSS, file sizes, and a 100,000-candidate projection. Results vary with profile length, storage speed, and enabled safeguards.
 
-```powershell
-python run.py --build-deck-materials
-python run.py --explain-top-candidates --top-n 10
-python run.py --build-demo-pack --top-k 100
-python run.py --judge-demo-check
-python run.py --build-all-submission-artifacts --top-k 100
-```
+## Troubleshooting
 
-Export and freeze the final submission:
+1. **Python version mismatch:** install Python 3.11 or 3.12, then recreate the environment with `python -m venv .venv`.
+2. **Dependency import error:** activate the virtual environment and rerun `python -m pip install -r requirements.txt`.
+3. **Parquet input fails:** install optional support with `python -m pip install ".[parquet]"`.
 
-```powershell
-python run.py --export-deck --format pptx
-python run.py --export-deck --format pdf
-python run.py --build-final-submission-bundle --top-k 100
-python run.py --freeze-submission --top-k 100
-```
+## Submission Checklist
 
-Recommended final workflow:
+- GitHub repository: `https://github.com/bpranav371-ship-it/Evidence_Rank`
+- Final `data/output/ranked_candidates.csv`
+- `data/output/EvidenceRank_Approach_Deck.pdf` or PPTX fallback
+- Optional score breakdown, proof, risk, calibration, and reproducibility audit outputs
+- Confirm `python run.py --freeze-submission --top-k 100` passes before upload
 
-```powershell
-# 1. Build fingerprints once
-python run.py --input data/input/candidates.jsonl --profile-only --batch-size 500
+## License
 
-# 2. Generate the final ranked CSV
-python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration
-
-# 3-6. Validate and collect optional evidence
-python run.py --validate-final-submission --top-k 100
-python run.py --jd data/input/job_description.txt --run-ablation --top-k 100
-python run.py --jd data/input/job_description.txt --run-benchmark
-python run.py --jd data/input/job_description.txt --run-weight-sensitivity --top-k 100
-
-# 7. Build the final internal package
-python run.py --final-submit-check --top-k 100
-```
-
-Optional risk controls:
-
-```powershell
-python run.py --jd data/input/job_description.txt --rank --enable-honeypot-firewall --strict-top-n 10 --risk-rerank-pool-size 500
-```
-
-Run tests:
-
-```powershell
-python -m pytest
-python -m unittest discover -s tests
-```
-
-## Outputs
-
-Feature 1:
-
-- `data/output/candidate_fingerprints.jsonl` - one normalized fingerprint per candidate
-- `data/output/schema_report.json` - source format, record count, fields, and likely mappings
-- `data/output/profiler_summary.json` - profiling errors, averages, runtime, and memory observations
-
-Feature 2:
-
-- `data/output/ranked_candidates.csv` - candidate ID, rank, final score, and concise reasoning
-- `data/output/score_breakdown.csv` - component scores, penalties, risk scores, and rerank status
-- `data/output/top_candidate_proofs.jsonl` - proof graphs and evidence snippets
-
-Feature 3:
-
-- `data/output/honeypot_audit.json` - aggregate risk and top-rank summaries
-- `data/output/honeypot_flags.csv` - candidate-level flags and reasons
-- `data/output/rerank_audit_top100.csv` - original versus risk-adjusted ranks
-
-Feature 4:
-
-- `data/output/evidence_calibration_report.json` - bounded-pool evidence and readiness summary
-- `data/output/jd_constraints_report.json` - role archetype, priorities, and negative constraints
-- `data/output/hireability_audit.csv` - calibrated behavior and availability components
-- `data/output/ablation_report.json` - proxy metrics across four ranking variants
-- `data/output/ablation_summary.csv` - compact ablation comparison
-- `data/output/sanity_checks_report.json` - deterministic behavioral sanity checks
-- `data/output/final_submission_safety_report.json` - blocking errors and upload warnings
-
-Feature 5:
-
-- `data/output/benchmark_report.json` and `benchmark_summary.csv` - synthetic sanity cases
-- `data/output/weight_sensitivity_report.json` and `weight_sensitivity_summary.csv` - controlled variant stability
-- `data/output/runtime_profile_report.json` - measured runtime, RSS, and scale projection
-- `data/output/reproducibility_manifest.json` - Git, Python, config, and dependency hashes
-- `data/output/final_submission_manifest.json` - package contents and readiness state
-- `data/output/approach_summary.md` - concise judge-facing architecture summary
-- `data/output/final_reproduction_command.txt` - exact regeneration commands
-- `data/output/submission_package.zip` - clean internal submission bundle without raw data
-
-Feature 6:
-
-- `docs/approach_deck.md` - twelve-slide judge-facing deck content
-- `docs/demo_script.md` - concise 2–3 minute presentation script
-- `docs/judge_walkthrough.md` - recommended artifact review order
-- `docs/submission_checklist.md` - final hackathon checklist
-- `docs/faq_for_judges.md` - concise technical answers to likely questions
-- `docs/*_diagram.mmd` - Mermaid architecture, scoring, and evidence-flow sources
-- `data/output/top10_explanation_cards.md` and `.json` - evidence-grounded cards
-- `data/output/judge_demo_packet.md` - consolidated judge handout
-- `data/output/demo_packet_manifest.json` - packet allowlist and missing files
-- `data/output/demo_packet.zip` - safe demo bundle without raw candidate data
-- `data/output/judge_demo_check_report.json` - demo readiness result
-
-Feature 7:
-
-- `data/output/EvidenceRank_Approach_Deck.pptx` - final 12-slide approach deck
-- `data/output/EvidenceRank_Approach_Deck.pdf` - offline PDF deck when ReportLab is installed
-- `data/output/pdf_export_instructions.txt` - graceful PDF fallback instructions
-- `data/output/EvidenceRank_One_Page_Summary.md` - concise project summary
-- `data/output/EvidenceRank_Final_Submission_Guide.md` - upload and regeneration guide
-- `data/output/final_artifact_hashes.json` - SHA-256 hashes and file sizes
-- `data/output/submission_freeze_manifest.json` - locked bundle and hash snapshot
-- `data/output/final_submission_bundle.zip` - allowlisted final backup bundle
-- `data/output/final_submission_freeze_report.json` - final readiness result
-
-## Scoring
-
-The Feature 2 baseline score is:
-
-```text
-0.25 * JD relevance
-+ 0.20 * must-have skill coverage
-+ 0.25 * proof alignment
-+ 0.10 * retrieval/ranking/evaluation depth
-+ 0.10 * production readiness
-+ 0.10 * hireability
-- configured basic anomaly penalties
-```
-
-When the firewall is enabled:
-
-```text
-risk_adjusted_score = max(0, base_final_score - honeypot_penalty)
-```
-
-When evidence calibration is enabled:
-
-```text
-calibrated_final_score =
-    risk_adjusted_score
-    + calibration_bonus
-    - calibration_penalty
-```
-
-The bonus is capped at 0.08 and the penalty at 0.15. Calibration runs only on
-the configurable top pool (700 by default), so the full 100,000-candidate
-ranking remains streaming and bounded-memory.
-
-Penalty bands are bounded by risk level:
-
-- low: 0.00-0.03
-- medium: 0.04-0.10
-- high: 0.11-0.25
-- severe: 0.30-0.50
-
-Missing behavior or availability data is neutral to mildly risky, not automatically disqualifying. Severe disqualification requires a strong or compound anomaly.
-
-## Risks detected
-
-- Explicit zero-duration expert claims when structured or textual evidence exists
-- Excessive keyword density and buzzword stuffing
-- Many claimed skills with weak career proof
-- Negative, impossible, or suspicious experience values
-- Seniority and title-career contradictions
-- Research-only profiles without production evidence
-- Shallow or generic project evidence behind deep AI claims
-- Unsupported required, retrieval, evaluation, or production claims
-- Low response, stale activity, and unclear availability signals
-
-## Limitations
-
-- Skill aliases are deterministic and intentionally finite.
-- Structured zero-duration checks work only when duration/proficiency data exists in the fingerprint or is explicitly stated in text.
-- Feature 1 fingerprints do not preserve every original role-date field, so timeline checks are conservative and best-effort.
-- Term overlap is lexical; no embedding model is used.
-- Reasoning is templated from real scores and evidence, not generated by an LLM.
-- Career and timeline extraction is lexical and best-effort because older fingerprints
-  do not preserve every original structured role field.
-- Ablation metrics are proxy sanity metrics because the challenge does not provide
-  public ground-truth relevance labels.
-- Offline benchmark and weight-sensitivity results are also sanity checks, not
-  official leaderboard or ground-truth metrics.
-
-## Safety note
-
-**Risk flags are heuristic ranking signals, not accusations against real people.** They reduce ranking confidence and identify records for human review.
-
-## Fairness note
-
-Hireability and risk signals are ranking-confidence signals, not final hiring
-decisions. Human review is required.
-
-## What to upload
-
-- The GitHub repository
-- The approach deck PDF
-- `ranked_candidates.csv`
-- Optionally keep `submission_package.zip` as an internal backup bundle
-
-The ZIP intentionally excludes raw candidates, input files, fingerprints,
-secrets, Git metadata, caches, and virtual environments.
-
-## Final project workflow
-
-```powershell
-# 1. Profile
-python run.py --input data/input/candidates.jsonl --profile-only --batch-size 500
-
-# 2. Rank
-python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration
-
-# 3. Final safety and submission package
-python run.py --final-submit-check --top-k 100
-
-# 4. Demo and deck materials
-python run.py --build-demo-pack --top-k 100
-
-# 5. Judge readiness check
-python run.py --judge-demo-check
-
-# 6. Rebuild every final artifact in one command
-python run.py --build-all-submission-artifacts --top-k 100
-
-# 7. Export and freeze
-python run.py --export-deck --format pptx
-python run.py --freeze-submission --top-k 100
-```
-
-Judges should inspect `ranked_candidates.csv`, `score_breakdown.csv`,
-`top10_explanation_cards.md`, `final_submission_safety_report.json`, and
-`reproducibility_manifest.json` first.
-
-The final deck PDF should be created manually from `docs/approach_deck.md`.
-Copy the twelve slide sections into PowerPoint, Google Slides, Marp, or another
-presentation tool, render the Mermaid diagrams where useful, and export to PDF.
-
-Feature 7 can also create the deck directly:
-
-```powershell
-python run.py --export-deck --format pptx
-python run.py --export-deck --format pdf
-```
-
-The recommended hackathon uploads are:
-
-- GitHub repository link
-- `data/output/ranked_candidates.csv`
-- `data/output/EvidenceRank_Approach_Deck.pdf` or `.pptx`
-- Optionally `data/output/final_submission_bundle.zip` as a private backup
-
-See [docs/methodology.md](docs/methodology.md) for implementation details.
+MIT License placeholder.
