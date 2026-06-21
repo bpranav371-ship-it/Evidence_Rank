@@ -4,6 +4,28 @@
 
 EvidenceRank is a CPU-only, offline candidate ranking system designed for roughly 100,000 professional profiles. It separates skill claims from profile evidence, streams candidates in low-memory mode, and keeps only bounded reranking pools in memory.
 
+## 90-second judge demo
+
+Windows:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
+python run.py --quick-demo
+```
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python run.py --quick-demo
+```
+
+This uses tracked synthetic data only and writes demo outputs to `data/output/demo/`.
+
 ## Feature status
 
 Completed:
@@ -65,6 +87,14 @@ EvidenceRank keeps three ideas separate:
 3. Whether behavioral, availability, and profile-risk signals make the ranking trustworthy
 
 The Candidate Proof Graph classifies skills as supported, weakly supported, or unsupported. The Honeypot Firewall then detects suspicious combinations such as dense buzzwords with weak evidence, unsupported senior AI positioning, experience contradictions, or retrieval/evaluation claims without proof.
+
+Semantic-lite relevance combines the existing lexical score with offline word and
+character TF-IDF similarity. It downloads no model and safely falls back to lexical
+matching if scikit-learn is unavailable.
+
+**Fairness note:** EvidenceRank does not penalize candidates for working at service
+companies. It only lowers ranking confidence when the profile lacks role-relevant
+evidence.
 
 ## System constraints
 
@@ -319,7 +349,7 @@ Missing behavior or availability data is neutral to mildly risky, not automatica
 - Negative, impossible, or suspicious experience values
 - Seniority and title-career contradictions
 - Research-only profiles without production evidence
-- Service-only profiles without relevant AI/retrieval depth
+- Shallow or generic project evidence behind deep AI claims
 - Unsupported required, retrieval, evaluation, or production claims
 - Low response, stale activity, and unclear availability signals
 

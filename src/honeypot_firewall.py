@@ -36,6 +36,7 @@ class HoneypotFirewallConfig:
         }
     )
     penalties: dict[str, float] = field(default_factory=lambda: dict(DEFAULT_RULE_PENALTIES))
+    reference_year: int = 2026
 
 
 class HoneypotFirewall:
@@ -57,6 +58,7 @@ class HoneypotFirewall:
                     **DEFAULT_RULE_PENALTIES,
                     **(config.get("penalties") or {}),
                 },
+                reference_year=int(config.get("reference_year", 2026)),
             )
         )
 
@@ -109,6 +111,7 @@ class HoneypotFirewall:
             proof_graph=proof_graph,
             component_scores=component_scores,
             deep=deep,
+            reference_year=self.config.reference_year,
         )
         raw_weight = sum(
             self.config.penalties.get(finding.flag, finding.weight)

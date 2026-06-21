@@ -59,18 +59,6 @@ PRODUCTION_TERMS = (
     "kubernetes",
     "aws",
 )
-SERVICE_COMPANIES = (
-    "tcs",
-    "tata consultancy services",
-    "infosys",
-    "wipro",
-    "accenture",
-    "cognizant",
-    "capgemini",
-    "mindtree",
-    "tech mahindra",
-    "hcl",
-)
 RETRIEVAL_CLAIMS = (
     "rag",
     "retrieval",
@@ -229,7 +217,10 @@ def keyword_stuffing_rules(
     return findings
 
 
-def experience_timeline_rules(fingerprint: dict[str, Any]) -> list[RuleFinding]:
+def experience_timeline_rules(
+    fingerprint: dict[str, Any],
+    reference_year: int = 2026,
+) -> list[RuleFinding]:
     findings: list[RuleFinding] = []
     years = safe_float(fingerprint.get("years_of_experience"))
     title = str(fingerprint.get("current_title") or "")
@@ -309,10 +300,9 @@ def experience_timeline_rules(fingerprint: dict[str, Any]) -> list[RuleFinding]:
             )
         )
 
-    current_year = date.today().year
-    valid_years = sorted(year for year in calendar_years if 1970 <= year <= current_year + 1)
+    valid_years = sorted(year for year in calendar_years if 1970 <= year <= reference_year + 1)
     if years is not None and valid_years:
-        calendar_span = current_year - min(valid_years)
+        calendar_span = reference_year - min(valid_years)
         if years > calendar_span + 5:
             findings.append(
                 _finding(
@@ -393,22 +383,32 @@ def title_career_rules(
                 "Research evidence appears without clear production deployment evidence.",
             )
         )
-    service_mentions = sum(
-        1 for company in SERVICE_COMPANIES if _contains_any(career, (company,))
+    supported_count = len(proof_graph.get("supported_skills") or [])
+    shallow_evidence = len(tokenize_simple(career)) < 45
+    no_depth = all(
+        (safe_float(proof_graph.get(field), 0.0) or 0.0) < 0.25
+        for field in (
+            "production_evidence_score",
+            "retrieval_ranking_evidence_score",
+            "evaluation_evidence_score",
+        )
     )
-    if service_mentions and not ai_career:
+    if ai_claims and shallow_evidence and supported_count <= 2 and no_depth:
         findings.append(
             _finding(
-                "service_only_profile",
+                "shallow_project_evidence",
                 "medium",
-                0.08,
-                "Service-company career evidence lacks clear AI/retrieval/ranking depth.",
+                0.06,
+                "AI/ML claims have short or generic project evidence and little supported depth.",
             )
         )
     return findings
 
 
-def availability_rules(fingerprint: dict[str, Any]) -> list[RuleFinding]:
+def availability_rules(
+    fingerprint: dict[str, Any],
+    reference_year: int = 2026,
+) -> list[RuleFinding]:
     findings: list[RuleFinding] = []
     behavior = fingerprint.get("behavioral_signal_summary") or {}
     availability = fingerprint.get("availability_signal_summary") or {}
@@ -440,7 +440,9 @@ def availability_rules(fingerprint: dict[str, Any]) -> list[RuleFinding]:
             behavior.get("last_active_date", behavior.get("last_activity", ""))
         )
         try:
-            days_stale = (date.today() - date.fromisoformat(last_active[:10])).days
+            days_stale = (
+                date(reference_year, 12, 31) - date.fromisoformat(last_active[:10])
+            ).days
             if days_stale > 180:
                 findings.append(
                     _finding(
@@ -552,15 +554,16 @@ def evaluate_anomaly_rules(
     proof_graph: dict[str, Any] | None = None,
     component_scores: dict[str, Any] | None = None,
     deep: bool = True,
+    reference_year: int = 2026,
 ) -> list[RuleFinding]:
     proof_graph = proof_graph or {}
     findings = [
         *zero_duration_expert_rules(fingerprint),
         *keyword_stuffing_rules(fingerprint, proof_graph),
-        *availability_rules(fingerprint),
+        *availability_rules(fingerprint, reference_year=reference_year),
     ]
     if deep:
-        findings.extend(experience_timeline_rules(fingerprint))
+        findings.extend(experience_timeline_rules(fingerprint, reference_year=reference_year))
         findings.extend(title_career_rules(fingerprint, proof_graph))
         findings.extend(
             proof_contradiction_rules(fingerprint, proof_graph, component_scores)

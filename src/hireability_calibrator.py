@@ -14,6 +14,7 @@ def _bool_score(value: Any, positive: float, negative: float) -> float | None:
 def build_hireability_profile(
     fingerprint: dict[str, Any],
     neutral_score: float = 0.50,
+    reference_year: int = 2026,
 ) -> dict[str, Any]:
     behavior = fingerprint.get("behavioral_signal_summary") or {}
     availability = fingerprint.get("availability_signal_summary") or {}
@@ -37,7 +38,10 @@ def build_hireability_profile(
     activity_score = neutral_score
     last_active = behavior.get("last_active_date") if isinstance(behavior, dict) else None
     try:
-        days = (date.today() - date.fromisoformat(str(last_active)[:10])).days
+        days = (
+            date(reference_year, 12, 31)
+            - date.fromisoformat(str(last_active)[:10])
+        ).days
         activity_score = clamp(1.0 - days / 365.0)
         (positive if days <= 45 else negative if days > 180 else []).append("active_recently" if days <= 45 else "inactive")
     except (TypeError, ValueError):

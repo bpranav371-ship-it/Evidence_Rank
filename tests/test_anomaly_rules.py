@@ -2,9 +2,11 @@ import unittest
 
 from src.anomaly_rules import (
     evaluate_anomaly_rules,
+    experience_timeline_rules,
     keyword_stuffing_rules,
     proof_contradiction_rules,
     zero_duration_expert_rules,
+    title_career_rules,
 )
 
 
@@ -85,6 +87,64 @@ class AnomalyRulesTests(unittest.TestCase):
             deep=True,
         )
         self.assertFalse(any(finding.severity in {"high", "severe"} for finding in findings))
+
+    def test_service_company_with_strong_ai_evidence_is_not_penalized(self) -> None:
+        findings = title_career_rules(
+            {
+                "current_title": "AI Engineer",
+                "career_evidence_text": (
+                    "At TCS built and deployed a production retrieval ranking API "
+                    "with NDCG evaluation, monitoring, Docker and AWS."
+                ),
+                "claimed_skills": ["Python", "Retrieval", "Ranking"],
+                "technical_terms": ["Python", "Retrieval", "Ranking"],
+            },
+            {
+                "supported_skills": ["Python", "Retrieval", "Ranking"],
+                "proof_alignment_score": 1.0,
+                "production_evidence_score": 1.0,
+                "retrieval_ranking_evidence_score": 1.0,
+                "evaluation_evidence_score": 1.0,
+            },
+        )
+        self.assertNotIn("shallow_project_evidence", {item.flag for item in findings})
+
+    def test_generic_ai_claims_can_receive_shallow_evidence_flag(self) -> None:
+        findings = title_career_rules(
+            {
+                "current_title": "Support Engineer",
+                "career_evidence_text": "Handled support tickets.",
+                "claimed_skills": ["AI", "RAG", "Ranking"],
+                "technical_terms": ["AI", "RAG", "Ranking"],
+            },
+            {
+                "supported_skills": [],
+                "proof_alignment_score": 0.0,
+                "production_evidence_score": 0.0,
+                "retrieval_ranking_evidence_score": 0.0,
+                "evaluation_evidence_score": 0.0,
+            },
+        )
+        self.assertIn("shallow_project_evidence", {item.flag for item in findings})
+
+    def test_fixed_reference_year_is_deterministic(self) -> None:
+        candidate = {
+            "years_of_experience": 8,
+            "current_title": "Senior Engineer",
+            "career_evidence_text": "Worked from 2020 to 2025.",
+        }
+        first = experience_timeline_rules(candidate, reference_year=2026)
+        second = experience_timeline_rules(candidate, reference_year=2026)
+        self.assertEqual(first, second)
+
+    def test_scoring_rules_do_not_use_system_year(self) -> None:
+        source = (
+            __import__("pathlib").Path(__file__).resolve().parents[1]
+            / "src"
+            / "anomaly_rules.py"
+        ).read_text(encoding="utf-8")
+        self.assertNotIn("date.today().year", source)
+        self.assertNotIn("datetime.now().year", source)
 
 
 if __name__ == "__main__":

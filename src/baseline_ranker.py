@@ -66,6 +66,7 @@ def rank_fingerprints(
     enable_evidence_calibration: bool = False,
     calibration_config: dict[str, Any] | None = None,
     calibration_pool_size: int = 700,
+    semantic_config: dict[str, Any] | None = None,
 ) -> RankingResult:
     source = Path(fingerprints_path)
     if not source.exists():
@@ -110,6 +111,7 @@ def rank_fingerprints(
                     proof_graph,
                     score_weights=score_weights,
                     penalties=penalties,
+                    semantic_config=semantic_config,
                 )
                 risk_report = None
                 if enable_honeypot_firewall:
@@ -174,6 +176,7 @@ def rank_fingerprints(
             item["proof_graph"],
             score_weights=score_weights,
             penalties=penalties,
+            semantic_config=semantic_config,
         )
         if index < strict_rerank_pool_size:
             item["score"] = apply_strict_rerank(item["score"], item["fingerprint"])
@@ -211,6 +214,7 @@ def rank_fingerprints(
             hireability = build_hireability_profile(
                 item["fingerprint"],
                 neutral_score=float(calibration_config.get("neutral_hireability_score", 0.50)),
+                reference_year=int(calibration_config.get("reference_year", 2026)),
             )
             calibration = calibrate_evidence(
                 item["fingerprint"],

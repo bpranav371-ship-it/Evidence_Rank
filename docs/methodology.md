@@ -142,7 +142,7 @@ Feature 2 uses standard-library text operations and no embeddings, GPU, internet
 - Impossible career timelines
 - Zero-duration expert skills
 - Experience/profile contradictions
-- Research-only and service-only career penalties
+- Research-only production gaps and shallow-project evidence checks
 - Title-chasing patterns
 - Full keyword-stuffer and honeypot filtering
 
@@ -164,7 +164,7 @@ Every fingerprint receives inexpensive streaming checks for:
 - response, activity, and availability risks;
 - empty-profile indicators.
 
-Only the bounded rerank pool receives deeper checks for title-career mismatch, seniority and experience conflicts, research-only production gaps, service-only profiles without relevant depth, unsupported JD requirements, and retrieval/evaluation/production contradictions.
+Only the bounded rerank pool receives deeper checks for title-career mismatch, seniority and experience conflicts, research-only production gaps, shallow project evidence, unsupported JD requirements, and retrieval/evaluation/production contradictions.
 
 Full evidence snippets are also generated only for this shortlist. This keeps runtime and memory proportional to the configured pool rather than the full candidate population.
 
@@ -184,7 +184,7 @@ The firewall checks whether:
 - non-technical titles are paired with unsupported deep-AI claims;
 - senior positioning has realistic experience and proof;
 - research-heavy profiles show production evidence for a production-focused JD;
-- service-company evidence contains relevant AI/retrieval/ranking depth;
+- AI/ML claims contain relevant role, project, and production depth;
 - required, retrieval, evaluation, and production claims have proof-graph support.
 
 ## Risk-adjusted scoring
@@ -249,7 +249,7 @@ preferred or top-10 signals rather than becoming an unrealistic all-or-nothing
 checklist.
 
 Negative constraints include missing must-have evidence, keyword-only claims,
-research without production, service-only careers without AI depth, and absent
+research without production, shallow project evidence behind AI claims, and absent
 retrieval, evaluation, or production proof. One weak constraint does not
 disqualify a candidate.
 
@@ -384,6 +384,24 @@ mix. Synthetic benchmarks cannot replace relevance judgments from recruiters
 or leaderboard labels. Weight stability indicates robustness, not optimality.
 All risk and hireability signals remain decision-support evidence for human
 review, never automated hiring decisions.
+
+## Employer-neutral evidence assessment
+
+EvidenceRank does not penalize candidates for working at service companies. It
+only lowers ranking confidence when the profile lacks role-relevant evidence.
+The `shallow_project_evidence` signal depends on short/generic career text, low
+supported-skill count, and absent production/retrieval/evaluation depth—not an
+employer name.
+
+## Semantic-lite and Indian-context normalization
+
+JD relevance retains the deterministic lexical score and blends it with local
+word and character TF-IDF similarity. Character n-grams add modest tolerance for
+hyphenation, inflection, and small typos without requiring model downloads.
+
+Common Hinglish career phrases and number words are normalized before the
+existing English cleaning pipeline. This keeps profiles such as “RAG system
+banaya” searchable as “RAG system built” while preserving technical terms.
 
 # Feature 6 Methodology
 

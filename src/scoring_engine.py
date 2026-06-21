@@ -4,6 +4,7 @@ from functools import lru_cache
 from typing import Any
 
 from .jd_parser import SKILL_DICTIONARY
+from .semantic_matcher import SemanticMatcher
 from .text_normalizer import clean_text
 from .utils import clamp, safe_float
 
@@ -168,6 +169,7 @@ def score_candidate(
     proof_graph: dict[str, Any],
     score_weights: dict[str, float] | None = None,
     penalties: dict[str, float] | None = None,
+    semantic_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     weights = {**DEFAULT_SCORE_WEIGHTS, **(score_weights or {})}
     penalty_config = {**DEFAULT_PENALTIES, **(penalties or {})}
@@ -181,11 +183,29 @@ def score_candidate(
     )
     candidate_normalized = clean_text(candidate_text)
     present_skills = _canonical_skill_matches_normalized(candidate_normalized)
-    jd_relevance = _jd_relevance_score(
+    lexical_relevance = _jd_relevance_score(
         jd_profile,
         candidate_normalized,
         present_skills,
     )
+    semantic_relevance = lexical_relevance
+    semantic_enabled = bool((semantic_config or {}).get("enabled", False))
+    if semantic_enabled:
+        semantic_score = SemanticMatcher(semantic_config).score_pair(
+            str(jd_profile.get("normalized_jd_text") or jd_profile.get("raw_jd_text") or ""),
+            candidate_text,
+        )
+        if semantic_score > 0:
+            lexical_weight = float((semantic_config or {}).get("lexical_weight", 0.65))
+            semantic_weight = float((semantic_config or {}).get("semantic_weight", 0.35))
+            jd_relevance = clamp(
+                lexical_weight * lexical_relevance + semantic_weight * semantic_score
+            )
+            semantic_relevance = semantic_score
+        else:
+            jd_relevance = lexical_relevance
+    else:
+        jd_relevance = lexical_relevance
     must_have, matched_required, unsupported_required = _must_have_score(
         jd_profile,
         proof_graph,
@@ -216,6 +236,8 @@ def score_candidate(
         "candidate_id": str(fingerprint.get("candidate_id") or ""),
         "final_score": round(final_score, 6),
         "jd_relevance_score": round(jd_relevance, 4),
+        "lexical_relevance_score": round(lexical_relevance, 4),
+        "semantic_relevance_score": round(semantic_relevance, 4),
         "must_have_skill_score": round(must_have, 4),
         "proof_alignment_score": round(proof_alignment, 4),
         "retrieval_ranking_evidence_score": round(retrieval, 4),

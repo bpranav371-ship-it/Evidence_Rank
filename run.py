@@ -255,6 +255,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Validate, hash, bundle, and freeze the final submission state.",
     )
+    modes.add_argument(
+        "--quick-demo",
+        action="store_true",
+        help="Run the complete pipeline on tracked synthetic sample data.",
+    )
     return parser
 
 
@@ -316,6 +321,8 @@ def print_profile_summary(summary: dict[str, Any]) -> None:
     print(f"Approximate runtime: {summary['runtime_seconds']:.2f} seconds")
     print(f"Memory-safe mode enabled: {summary['memory_safe_mode']}")
     print(f"Fingerprints: {summary['output_files']['candidate_fingerprints']}")
+    if summary.get("schema_health", {}).get("warning"):
+        print(f"WARNING: {summary['schema_health']['warning']}")
 
 
 def run_ranking(
@@ -341,7 +348,11 @@ def run_ranking(
     top_k = int(top_k_override or ranking_config.get("top_k", 100))
     strict_pool = int(ranking_config.get("strict_rerank_pool_size", 300))
     max_snippets = int(ranking_config.get("max_evidence_snippets", 5))
-    firewall_config = config.get("honeypot_firewall", {})
+    reference_year = int(config.get("reproducibility", {}).get("reference_year", 2026))
+    firewall_config = {
+        **config.get("honeypot_firewall", {}),
+        "reference_year": reference_year,
+    }
     strict_top_n = int(
         strict_top_n_override or firewall_config.get("strict_top_n", 10)
     )
@@ -349,7 +360,11 @@ def run_ranking(
         risk_pool_override or firewall_config.get("risk_rerank_pool_size", 500)
     )
     firewall = HoneypotFirewall.from_dict(firewall_config)
-    calibration_config = config.get("evidence_calibration", {})
+    calibration_config = {
+        **config.get("evidence_calibration", {}),
+        "reference_year": reference_year,
+    }
+    semantic_config = config.get("semantic_matching", {})
     calibration_pool = int(
         calibration_pool_override
         or calibration_config.get("calibration_pool_size", 700)
@@ -376,6 +391,7 @@ def run_ranking(
                 enable_evidence_calibration=enable_evidence_calibration,
                 calibration_config=calibration_config,
                 calibration_pool_size=calibration_pool,
+                semantic_config=semantic_config,
             )
             audit_summary = audit_writer.finalize(result.ranked_candidates)
             audit_paths = audit_writer.output_paths
@@ -392,6 +408,7 @@ def run_ranking(
             enable_evidence_calibration=enable_evidence_calibration,
             calibration_config=calibration_config,
             calibration_pool_size=calibration_pool,
+            semantic_config=semantic_config,
         )
     output_paths = write_ranking_outputs(result.ranked_candidates, output_dir)
     output_paths.update(audit_paths)
@@ -495,11 +512,18 @@ def main(argv: list[str] | None = None) -> int:
     batch_size = int(args.batch_size or config.get("batch_size", 1000))
     ranking_config = config.get("ranking", {})
     top_k = int(args.top_k or ranking_config.get("top_k", 100))
-    firewall_config = config.get("honeypot_firewall", {})
+    reference_year = int(config.get("reproducibility", {}).get("reference_year", 2026))
+    firewall_config = {
+        **config.get("honeypot_firewall", {}),
+        "reference_year": reference_year,
+    }
     firewall_enabled = bool(
         args.enable_honeypot_firewall or firewall_config.get("enabled", False)
     )
-    calibration_config = config.get("evidence_calibration", {})
+    calibration_config = {
+        **config.get("evidence_calibration", {}),
+        "reference_year": reference_year,
+    }
     calibration_enabled = bool(
         args.enable_evidence_calibration or calibration_config.get("enabled", False)
     )
@@ -526,9 +550,48 @@ def main(argv: list[str] | None = None) -> int:
             and not args.export_deck
             and not args.build_final_submission_bundle
             and not args.freeze_submission
+            and not args.quick_demo
         )
     )
     rank_requested = args.rank or args.profile_and_rank
+
+    if args.quick_demo:
+        demo_output = output_dir / "demo"
+        sample_input = PROJECT_ROOT / "data" / "sample" / "sample_candidates.jsonl"
+        sample_jd = PROJECT_ROOT / "data" / "sample" / "sample_job_description.txt"
+        if not sample_input.exists() or not sample_jd.exists():
+            print("Synthetic sample files are missing.", file=sys.stderr)
+            return 2
+        run_profiling(
+            sample_input,
+            demo_output,
+            config,
+            limit=None,
+            batch_size=min(batch_size, 100),
+        )
+        (
+            result,
+            paths,
+            validation,
+            _,
+            _,
+            _,
+        ) = run_ranking(
+            demo_output / "candidate_fingerprints.jsonl",
+            sample_jd,
+            demo_output,
+            config,
+            args.top_k or 5,
+            enable_honeypot_firewall=True,
+            enable_evidence_calibration=True,
+        )
+        print("\nEvidenceRank 90-second quick demo")
+        print("-" * 37)
+        for item in result.ranked_candidates[:5]:
+            score = item["score"].get("calibrated_final_score", item["score"]["final_score"])
+            print(f"#{item['rank']} {item['candidate_id']}: {float(score):.4f}")
+        print(f"Output: {paths['ranked_candidates'].resolve()}")
+        return 0 if validation["valid"] else 1
 
     if profile_requested:
         input_path = resolve_project_path(args.input_path or config["input_path"])

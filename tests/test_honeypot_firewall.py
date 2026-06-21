@@ -109,6 +109,27 @@ class HoneypotFirewallTests(unittest.TestCase):
         self.assertGreaterEqual(report["risk_score"], 0)
         self.assertLessEqual(report["risk_score"], 1)
 
+    def test_fixed_reference_year_produces_same_risk(self) -> None:
+        firewall = HoneypotFirewall.from_dict({"reference_year": 2026})
+        fingerprint = {
+            "candidate_id": "FIXED",
+            "current_title": "Senior AI Engineer",
+            "years_of_experience": 4,
+            "career_evidence_text": "Built retrieval systems from 2021 to 2025.",
+            "raw_text_compact": "Senior AI Engineer retrieval 2021 2025",
+            "claimed_skills": ["Retrieval"],
+            "technical_terms": ["Retrieval"],
+            "keyword_density_score": 0.03,
+            "behavioral_signal_summary": {"last_active_date": "2025-12-01"},
+            "availability_signal_summary": {"notice_period_days": 30},
+            "anomaly_flags": [],
+        }
+        graph = _proof(1.0)
+        self.assertEqual(
+            firewall.assess(fingerprint, graph),
+            firewall.assess(fingerprint, graph),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

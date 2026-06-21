@@ -4,6 +4,8 @@ import re
 import unicodedata
 from typing import Any, Iterable
 
+from .transliterator import normalize_indian_text
+
 
 _SPACE_RE = re.compile(r"\s+")
 _PUNCT_RE = re.compile(r"[^\w\s+#./-]+", flags=re.UNICODE)
@@ -13,7 +15,7 @@ _TOKEN_RE = re.compile(r"[a-z0-9]+(?:[+#.][a-z0-9]+)*", flags=re.IGNORECASE)
 def clean_text(value: Any) -> str:
     if value is None:
         return ""
-    text = unicodedata.normalize("NFKC", str(value)).lower()
+    text = normalize_indian_text(unicodedata.normalize("NFKC", str(value))).lower()
     text = text.replace("_", " ").replace("|", " ").replace("—", "-").replace("–", "-")
     text = _PUNCT_RE.sub(" ", text)
     return _SPACE_RE.sub(" ", text).strip()

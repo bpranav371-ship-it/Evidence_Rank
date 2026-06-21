@@ -1,0 +1,9 @@
+# Compatible lock-style environment for Python 3.11/3.12.
+numpy==2.2.6
+pandas==2.2.3
+psutil==7.0.0
+PyYAML==6.0.2
+pytest==8.4.1
+python-pptx==1.0.2
+reportlab==4.4.3
+scikit-learn==1.7.1

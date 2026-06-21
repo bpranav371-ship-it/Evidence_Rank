@@ -6,6 +6,16 @@ memory_safe_mode: true
 max_text_length_per_candidate: 12000
 enable_debug_samples: true
 
+semantic_matching:
+  enabled: true
+  method: "tfidf_word_char"
+  word_ngram_range: [1, 2]
+  char_ngram_range: [3, 5]
+  max_features: 50000
+  max_candidate_chars: 1000
+  semantic_weight: 0.35
+  lexical_weight: 0.65
+
 ranking:
   top_k: 100
   strict_rerank_pool_size: 300
@@ -63,7 +73,7 @@ evidence_calibration:
     top10_readiness: 0.20
   negative_constraint_penalties:
     research_only_without_production: 0.05
-    service_only_without_ai_depth: 0.05
+    shallow_project_evidence: 0.05
     keyword_only_without_evidence: 0.10
     no_retrieval_or_ranking_evidence: 0.08
     no_evaluation_evidence: 0.06
@@ -87,6 +97,7 @@ submission_safety:
 
 reproducibility:
   random_seed: 42
+  reference_year: 2026
   repository_url: "https://github.com/bpranav371-ship-it/Evidence_Rank.git"
   recommended_final_command: "python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration"
 

@@ -1,0 +1,6 @@
+candidate_id,rank,score,reasoning
+SYN_STRONG_01,1,0.950000,Synthetic expected example: strong production retrieval ranking and evaluation evidence.
+SYN_PRODUCT_19,2,0.900000,Synthetic expected example: search ranking ownership from evaluation to rollout.
+SYN_TCS_04,3,0.850000,Synthetic expected example: employer-neutral AI evidence with deployment and MRR.
+SYN_HIDDEN_GEM_11,4,0.800000,Synthetic expected example: plain-language search relevance evidence.
+SYN_MISSING_BEHAVIOR_20,5,0.750000,Synthetic expected example: strong technical evidence with neutral missing behavior.

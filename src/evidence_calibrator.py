@@ -7,7 +7,7 @@ from .utils import clamp
 
 DEFAULT_NEGATIVE_PENALTIES = {
     "research_only_without_production": 0.05,
-    "service_only_without_ai_depth": 0.05,
+    "shallow_project_evidence": 0.05,
     "keyword_only_without_evidence": 0.10,
     "no_retrieval_or_ranking_evidence": 0.08,
     "no_evaluation_evidence": 0.06,
@@ -68,8 +68,8 @@ def calibrate_evidence(
         negatives.append("keyword_only_without_evidence")
     if "research" in text and production == 0:
         negatives.append("research_only_without_production")
-    if "service_only_profile" in (risk_report or {}).get("risk_flags", []):
-        negatives.append("service_only_without_ai_depth")
+    if "shallow_project_evidence" in (risk_report or {}).get("risk_flags", []):
+        negatives.append("shallow_project_evidence")
 
     negative_penalty = min(max_penalty, sum(negative_weights.get(flag, 0.0) for flag in set(negatives)))
     evidence_depth = clamp(0.35 * career_depth + 0.25 * production + 0.20 * retrieval + 0.20 * evaluation)

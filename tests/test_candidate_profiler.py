@@ -111,6 +111,8 @@ class CandidateProfilerTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(summary["total_candidates_processed"], 2)
+        self.assertIn("schema_health", summary)
+        self.assertIsNotNone(summary["schema_health"]["warning"])
 
 
 if __name__ == "__main__":

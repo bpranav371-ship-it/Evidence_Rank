@@ -26,6 +26,7 @@ class IncrementalFeatureStore:
         self.skill_evidence_sum = 0.0
         self.missing_fields: Counter[str] = Counter()
         self.anomaly_flags: Counter[str] = Counter()
+        self.schema_health_counts: Counter[str] = Counter()
         self.peak_observed_memory_mb: float | None = None
 
     def __enter__(self) -> "IncrementalFeatureStore":
@@ -54,6 +55,14 @@ class IncrementalFeatureStore:
         self.skill_evidence_sum += float(fingerprint["skill_evidence_hint_score"])
         self.missing_fields.update(fingerprint.get("missing_fields", []))
         self.anomaly_flags.update(fingerprint.get("anomaly_flags", []))
+        if not str(fingerprint.get("raw_text_compact") or "").strip():
+            self.schema_health_counts["empty_profile"] += 1
+        if str(fingerprint.get("candidate_id") or "").startswith("GENERATED_"):
+            self.schema_health_counts["generated_id"] += 1
+        if "missing_skills" in set(fingerprint.get("anomaly_flags") or []):
+            self.schema_health_counts["missing_skills"] += 1
+        if not str(fingerprint.get("career_evidence_text") or "").strip():
+            self.schema_health_counts["missing_career_evidence"] += 1
         current_memory = memory_usage_mb()
         if current_memory is not None:
             self.peak_observed_memory_mb = max(self.peak_observed_memory_mb or 0.0, current_memory)
@@ -69,6 +78,19 @@ class IncrementalFeatureStore:
     ) -> dict[str, Any]:
         self.loader_errors = loader_errors
         total = max(1, self.total_candidates)
+        schema_health = {
+            "empty_profile_rate": round(self.schema_health_counts["empty_profile"] / total, 4),
+            "generated_id_rate": round(self.schema_health_counts["generated_id"] / total, 4),
+            "missing_skills_rate": round(self.schema_health_counts["missing_skills"] / total, 4),
+            "missing_career_evidence_rate": round(
+                self.schema_health_counts["missing_career_evidence"] / total, 4
+            ),
+        }
+        warning = any(value > 0.30 for value in schema_health.values())
+        schema_health["warning"] = (
+            "Schema mapping may be weak. Review schema_report.json before trusting rankings."
+            if warning else None
+        )
         summary = {
             "total_candidates_processed": self.total_candidates,
             "total_loader_errors": self.loader_errors,
@@ -79,6 +101,7 @@ class IncrementalFeatureStore:
             "average_skill_evidence_hint_score": round(self.skill_evidence_sum / total, 4),
             "top_missing_fields": dict(self.missing_fields.most_common(15)),
             "top_anomaly_flags": dict(self.anomaly_flags.most_common(15)),
+            "schema_health": schema_health,
             "runtime_seconds": round(self.timer.elapsed_seconds, 3),
             "peak_observed_memory_mb": (
                 round(self.peak_observed_memory_mb, 2)

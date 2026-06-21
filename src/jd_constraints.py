@@ -65,7 +65,7 @@ def build_jd_constraint_profile(jd_profile: dict[str, Any]) -> dict[str, Any]:
     if production_heavy:
         negatives.extend(("research_only_without_production", "no_production_evidence"))
     if retrieval_heavy:
-        negatives.extend(("service_only_without_ai_depth", "no_retrieval_or_ranking_evidence"))
+        negatives.extend(("shallow_project_evidence", "no_retrieval_or_ranking_evidence"))
     if evaluation_heavy:
         negatives.append("no_evaluation_evidence")
     priorities = {

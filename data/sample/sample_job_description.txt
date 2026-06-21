@@ -1,0 +1,1 @@
+Senior Retrieval and Ranking Engineer. Must have Python, machine learning, retrieval, ranking, embeddings, RAG, evaluation with NDCG or MRR, APIs, Docker, AWS, monitoring, and production deployment experience. Strong communication and availability in India are preferred.
