@@ -1,0 +1,21 @@
+{
+  "passed": true,
+  "blocking_errors": [],
+  "warnings": [],
+  "recommended_actions": [],
+  "file_checks": {
+    "ranked_candidates_exists": true,
+    "score_breakdown_exists": true,
+    "top_candidate_proofs_exists": true,
+    "final_reproduction_command_exists": true,
+    "row_count": 100,
+    "expected_row_count": 100
+  },
+  "ranking_quality_checks": {
+    "scores_descending": true,
+    "scores_not_identical": true,
+    "average_reasoning_length": 317.12,
+    "severe_risk_in_top10": 0,
+    "top10_score_range": 0.226289
+  }
+}

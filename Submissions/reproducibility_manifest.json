@@ -1,0 +1,30 @@
+{
+  "project_name": "EvidenceRank — Candidate Proof Engine",
+  "repository_url": "https://github.com/bpranav371-ship-it/Evidence_Rank.git",
+  "current_git_commit_hash": "ae0f288988e1c525a65d273c57d7a3cc4f78039c",
+  "current_git_branch": "main",
+  "git_dirty_status": false,
+  "python_version": "3.12.3",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "requirements_hash": "7d1a16e6852c8e5cc76a9b309926a1e325a14dfef2f2d10b34b8f8c3804d46a9",
+  "config_hash": "4404f8b7e451b6c23b094716ab554a16f2c38398ab6a54632ab16d7a7e94991d",
+  "run_command_recommended": "python run.py --jd data/input/job_description.txt --rank --top-k 100 --enable-honeypot-firewall --enable-evidence-calibration",
+  "input_files_expected": [
+    "data/input/candidates.jsonl",
+    "data/input/job_description.txt"
+  ],
+  "output_files_expected": [
+    "ranked_candidates.csv",
+    "score_breakdown.csv",
+    "top_candidate_proofs.jsonl",
+    "final_submission_safety_report.json",
+    "reproducibility_manifest.json"
+  ],
+  "random_seed": 42,
+  "ranking_mode_used": "risk_aware_evidence_calibrated",
+  "firewall_enabled": true,
+  "calibration_enabled": true,
+  "top_k": 100,
+  "generated_at": "2026-06-21T13:00:52.152071+00:00",
+  "notes": "The manifest contains hashes and filenames only. It does not include raw candidate records or private dataset contents."
+}
